@@ -12,6 +12,7 @@ REMINDER_FILE="$ROOT/server_scripts/.broken_queue_last_reminder"
 READY_SESSION_FILE="$ROOT/server_scripts/.last_ready_session"
 PLAYER_STATE_FILE="$ROOT/server_scripts/.last_player_state"
 PERF_STATE_FILE="$ROOT/server_scripts/.last_perf_alert"
+PERF_HISTORY_STATE_FILE="$ROOT/server_scripts/.last_perf_history"
 HICCUP_LOG="$ROOT/server_scripts/hiccups.log"
 LOCK_FILE="$ROOT/server_scripts/.monitor_server.lock"
 DISK_THRESHOLD="${DISK_THRESHOLD:-95}"
@@ -23,6 +24,7 @@ DB_EXTREME_THRESHOLD="${DB_EXTREME_THRESHOLD:-3}"
 P2P_DELAY_THRESHOLD_MS="${P2P_DELAY_THRESHOLD_MS:-30000}"
 P2P_DELAY_COUNT_THRESHOLD="${P2P_DELAY_COUNT_THRESHOLD:-3}"
 PERF_ALERT_COOLDOWN="${PERF_ALERT_COOLDOWN:-900}"
+PERF_HISTORY_COOLDOWN="${PERF_HISTORY_COOLDOWN:-60}"
 REMINDER_SECONDS="${REMINDER_SECONDS:-1800}"
 SERVER_NAME="Wayward Winds"
 
@@ -227,9 +229,9 @@ import json, sys
 d=json.load(sys.stdin)
 labels=[]
 if d.get("db_slow", 0) > 0:
-    labels.append(f"db:{d.get(\"db_slow\", 0)}:{d.get(\"db_extreme\", 0)}")
+    labels.append("db:{}:{}".format(d.get("db_slow", 0), d.get("db_extreme", 0)))
 if d.get("p2p_delays", 0) > 0:
-    labels.append(f"p2p:{d.get(\"p2p_delays\", 0)}:{d.get(\"max_p2p_delay_ms\", 0)//1000}s")
+    labels.append("p2p:{}:{}s".format(d.get("p2p_delays", 0), d.get("max_p2p_delay_ms", 0)//1000))
 print("|".join(labels) or "clear")
 '
 }
@@ -244,6 +246,39 @@ maybe_notify_performance() {
   p2p_delays="$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("p2p_delays", 0))')"
   max_p2p="$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("max_p2p_delay_ms", 0))')"
   latest="$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("latest_perf_line", "none"))')"
+  key="$(perf_state_key "$json")"
+  now="$(date +%s)"
+
+  if [ "$db_slow" -gt 0 ] || [ "$db_extreme" -gt 0 ] || [ "$p2p_delays" -gt 0 ]; then
+    last_ts=0
+    last_key=""
+    if [ -f "$PERF_HISTORY_STATE_FILE" ]; then
+      read -r last_ts last_key < "$PERF_HISTORY_STATE_FILE" || true
+    fi
+    if [ "$key" != "$last_key" ] || [ $((now - last_ts)) -ge "$PERF_HISTORY_COOLDOWN" ]; then
+      printf '%s %s\n' "$now" "$key" > "$PERF_HISTORY_STATE_FILE"
+      jq -cn \
+        --arg time "$(date -Is)" \
+        --arg key "$key" \
+        --arg latest "$latest" \
+        --argjson db_slow "$db_slow" \
+        --argjson db_extreme "$db_extreme" \
+        --argjson p2p_delays "$p2p_delays" \
+        --argjson max_p2p_delay_ms "$max_p2p" \
+        --argjson players "$(online_count)" \
+        '{
+          time: $time,
+          type: "performance",
+          key: $key,
+          db_slow: $db_slow,
+          db_extreme: $db_extreme,
+          p2p_delays: $p2p_delays,
+          max_p2p_delay_ms: $max_p2p_delay_ms,
+          players: $players,
+          latest: $latest
+        }' >> "$HICCUP_LOG" 2>/dev/null || true
+    fi
+  fi
 
   if [ "$db_slow" -lt "$DB_SLOW_THRESHOLD" ] && \
      [ "$db_extreme" -lt "$DB_EXTREME_THRESHOLD" ] && \
@@ -251,39 +286,17 @@ maybe_notify_performance() {
     return 0
   fi
 
-  now="$(date +%s)"
   last_ts=0
   last_key=""
   if [ -f "$PERF_STATE_FILE" ]; then
     read -r last_ts last_key < "$PERF_STATE_FILE" || true
   fi
 
-  key="$(perf_state_key "$json")"
   if [ "$key" = "$last_key" ] && [ $((now - last_ts)) -lt "$PERF_ALERT_COOLDOWN" ]; then
     return 0
   fi
 
   printf '%s %s\n' "$now" "$key" > "$PERF_STATE_FILE"
-  jq -cn \
-    --arg time "$(date -Is)" \
-    --arg key "$key" \
-    --arg latest "$latest" \
-    --argjson db_slow "$db_slow" \
-    --argjson db_extreme "$db_extreme" \
-    --argjson p2p_delays "$p2p_delays" \
-    --argjson max_p2p_delay_ms "$max_p2p" \
-    --argjson players "$(online_count)" \
-    '{
-      time: $time,
-      type: "performance",
-      key: $key,
-      db_slow: $db_slow,
-      db_extreme: $db_extreme,
-      p2p_delays: $p2p_delays,
-      max_p2p_delay_ms: $max_p2p_delay_ms,
-      players: $players,
-      latest: $latest
-    }' >> "$HICCUP_LOG" 2>/dev/null || true
   pid="$(windrose_pid || true)"
   message="Performance hiccup detected in the last ${DB_SLOW_WINDOW}s.\n\nDB slow commits: $db_slow\nDB extreme commits: $db_extreme\nP2P delay lines over ${P2P_DELAY_THRESHOLD_MS}ms: $p2p_delays\nMax P2P delay: ${max_p2p}ms\nPlayers online: $(online_count)\nPlayers: $(online_names)\n\n$(process_snapshot "$pid")\n$(disk_snapshot)\n\nLatest matching log line:\n$latest"
   notify "Server Performance Hiccup" "$message" "YELLOW"
