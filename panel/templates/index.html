@@ -396,6 +396,18 @@
               <div class="field"><label for="direct_connection_server_port">Direct Server Port</label><input id="direct_connection_server_port" name="direct_connection_server_port" type="number" min="1" max="65535" value="{{ config.direct_connection_server_port }}"></div>
               <div class="field"><label for="direct_connection_proxy_address">Direct Proxy Bind Address</label><input id="direct_connection_proxy_address" name="direct_connection_proxy_address" type="text" value="{{ config.direct_connection_proxy_address }}"></div>
             </div>
+            <h2>Discord</h2>
+            <div class="form-grid">
+              <div class="field">
+                <label for="discord_webhook">Webhook URL</label>
+                <input id="discord_webhook" name="discord_webhook" type="password" placeholder="{{ discord.masked or 'https://discord.com/api/webhooks/...' }}" autocomplete="off">
+                <div class="small">Status: {{ 'configured' if discord.configured else 'not configured' }}. Stored at {{ discord.path }}.</div>
+              </div>
+              <div class="check-field">
+                <input id="clear_discord_webhook" name="clear_discord_webhook" type="checkbox">
+                <label for="clear_discord_webhook">Clear Discord webhook</label>
+              </div>
+            </div>
             <h2>World Scaling</h2>
             {% if world_settings.error %}
               <div class="empty">{{ world_settings.error }}</div>

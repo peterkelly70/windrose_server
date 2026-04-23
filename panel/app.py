@@ -29,6 +29,7 @@ GAME_LOG = SERVER_FILES / "R5" / "Saved" / "Logs" / "R5.log"
 PANEL_SECRET_FILE = ROOT / "panel" / ".panel_secret"
 HICCUP_LOG = ROOT / "server_scripts" / "hiccups.log"
 BOOTSTRAP_SCRIPT = ROOT / "server_scripts" / "bootstrap_install.sh"
+DISCORD_WEBHOOK_FILE = ROOT / "server_scripts" / ".discord_webhook"
 STEAM_MANIFEST = SERVER_FILES / "steamapps" / "appmanifest_4129620.acf"
 BACKUP_DIR = ROOT / "backups"
 COMPOSE_DIR = ROOT
@@ -266,6 +267,39 @@ def read_env_file(path):
     return values
 
 
+def read_discord_settings():
+    try:
+        webhook = DISCORD_WEBHOOK_FILE.read_text().strip()
+    except OSError:
+        webhook = ""
+    masked = ""
+    if webhook:
+        masked = webhook[:32] + "..." + webhook[-8:] if len(webhook) > 48 else "configured"
+    return {
+        "configured": bool(webhook),
+        "masked": masked,
+        "path": str(DISCORD_WEBHOOK_FILE),
+    }
+
+
+def update_discord_settings(form):
+    webhook = form.get("discord_webhook", "").strip()
+    clear = form.get("clear_discord_webhook") == "on"
+
+    if clear:
+        DISCORD_WEBHOOK_FILE.unlink(missing_ok=True)
+        return
+
+    if not webhook:
+        return
+
+    if not webhook.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
+        raise ValueError("Discord webhook must be a Discord webhook URL.")
+
+    DISCORD_WEBHOOK_FILE.write_text(webhook + "\n")
+    DISCORD_WEBHOOK_FILE.chmod(0o600)
+
+
 def write_env_file(path, updates):
     existing_lines = []
     try:
@@ -407,6 +441,7 @@ def update_server_settings(form):
 
     save_server_description(data)
     update_world_settings(form)
+    update_discord_settings(form)
     write_env_file(ENV_FILE, {
         "SERVER_NAME": server_name,
         "INVITE_CODE": invite_code,
@@ -1018,6 +1053,7 @@ def index():
         worlds=world_summary(),
         world_settings=read_world_settings(),
         env=read_env_file(ENV_FILE),
+        discord=read_discord_settings(),
         install=install_status(),
         logs=docker_logs(),
         checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1085,6 +1121,7 @@ def api_status():
         "monitor": monitor_summary(),
         "worlds": world_summary(),
         "world_settings": read_world_settings(),
+        "discord": read_discord_settings(),
         "install": install_status(),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }

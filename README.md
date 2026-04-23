@@ -112,6 +112,7 @@ The Setup tab can update:
 - invite code
 - max players
 - server password
+- Discord webhook URL
 - P2P proxy address
 - direct connection settings
 - active world scaling values
