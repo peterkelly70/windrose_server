@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import json
+import mimetypes
 import os
 import re
 import shutil
 import subprocess
 import secrets
+import tempfile
 import threading
 import zipfile
 from io import BytesIO
@@ -113,6 +115,83 @@ def run_command_ok(args, timeout=10):
         return run_command(args, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"ok": False, "code": 124, "stdout": "", "stderr": "Command timed out."}
+
+
+def bug_report_settings():
+    api_url = os.environ.get("WINDROSE_PANEL_BUG_REPORT_API_URL", "").strip()
+    api_key = os.environ.get("WINDROSE_PANEL_BUG_REPORT_API_KEY", "").strip()
+    game_bug_url = os.environ.get("WINDROSE_PANEL_GAME_BUG_URL", "https://steamcommunity.com/app/3041230/discussions/").strip()
+    return {
+        "enabled": bool(api_url and api_key),
+        "api_url": api_url,
+        "api_key": api_key,
+        "game_bug_url": game_bug_url,
+    }
+
+
+def submit_bug_report_proxy(form, files):
+    settings = bug_report_settings()
+    if not settings["enabled"]:
+        return {"ok": False, "error": "Bug report integration is not configured on this server."}
+
+    answers = form.get("answers", "").strip()
+    if not answers:
+        return {"ok": False, "error": "Missing answers."}
+
+    file_list = files.getlist("attachments[]")
+    if len(file_list) > 5:
+        return {"ok": False, "error": "Too many files. Maximum 5 attachments."}
+
+    temp_paths = []
+    args = [
+        "curl",
+        "-fsS",
+        "-X",
+        "POST",
+        f"{settings['api_url']}?api_key={settings['api_key']}",
+        "-F",
+        f"answers={answers}",
+    ]
+
+    try:
+        total_bytes = 0
+        for storage in file_list:
+            if not storage or not storage.filename:
+                continue
+            storage.stream.seek(0, os.SEEK_END)
+            size = storage.stream.tell()
+            storage.stream.seek(0)
+            if size > 16 * 1024 * 1024:
+                return {"ok": False, "error": "One or more files exceed the 16 MB limit."}
+            total_bytes += size
+            if total_bytes > 64 * 1024 * 1024:
+                return {"ok": False, "error": "Attachments exceed the 64 MB total limit."}
+
+            suffix = Path(storage.filename).suffix
+            temp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            storage.save(temp.name)
+            temp.close()
+            temp_paths.append(temp.name)
+            content_type = storage.mimetype or mimetypes.guess_type(storage.filename)[0] or "application/octet-stream"
+            args.extend(["-F", f"attachments[]=@{temp.name};filename={storage.filename};type={content_type}"])
+
+        result = run_command(args, timeout=120)
+        if not result["ok"]:
+            return {"ok": False, "error": result["stderr"] or result["stdout"] or "Submit failed."}
+
+        try:
+            payload = json.loads(result["stdout"] or "{}")
+        except json.JSONDecodeError:
+            return {"ok": False, "error": "Upstream returned invalid JSON."}
+        if not payload.get("ok", True):
+            return {"ok": False, "error": payload.get("error", "Submit failed.")}
+        return {"ok": True, "payload": payload}
+    finally:
+        for path in temp_paths:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 def log_datetime(line):
@@ -1052,6 +1131,7 @@ def index():
         monitor=monitor_summary(),
         worlds=world_summary(),
         world_settings=read_world_settings(),
+        bug_report=bug_report_settings(),
         env=read_env_file(ENV_FILE),
         discord=read_discord_settings(),
         install=install_status(),
@@ -1121,11 +1201,20 @@ def api_status():
         "monitor": monitor_summary(),
         "worlds": world_summary(),
         "world_settings": read_world_settings(),
+        "bug_report": bug_report_settings(),
         "discord": read_discord_settings(),
         "install": install_status(),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     return app.response_class(json.dumps(body, indent=2), mimetype="application/json")
+
+
+@app.post("/report/submit")
+@require_login
+def report_submit():
+    result = submit_bug_report_proxy(request.form, request.files)
+    status = 200 if result.get("ok") else 400
+    return app.response_class(json.dumps(result, indent=2), mimetype="application/json", status=status)
 
 
 @app.post("/install/bootstrap")

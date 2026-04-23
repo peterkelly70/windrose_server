@@ -237,33 +237,35 @@
       .flash.bad { border: 1px solid var(--bad); }
       .report-wrap { padding: 14px; }
       .report-intro { padding: 14px 14px 0; }
-      #cw-feedback .cw-embed-form {
-        font-family: inherit;
+      .report-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 14px 14px 0;
+      }
+      .report-form {
         color: var(--text);
         background: rgba(16, 18, 18, 0.56);
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 16px;
-        box-shadow: none;
-        letter-spacing: 0;
       }
-      #cw-feedback .cw-embed-form h3 {
-        color: var(--text);
-        margin: 0 0 0.5rem 0;
-        font-size: 24px;
-        letter-spacing: 0;
-        text-transform: none;
+      .report-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
       }
-      #cw-feedback .cw-embed-form p,
-      #cw-feedback .cw-field label,
-      #cw-feedback .cw-message { color: var(--muted); }
-      #cw-feedback .cw-field label {
+      .report-field label {
+        display: block;
+        color: var(--muted);
         margin-bottom: 6px;
         font-size: 13px;
       }
-      #cw-feedback .cw-field input,
-      #cw-feedback .cw-field select,
-      #cw-feedback .cw-field textarea {
+      .report-field.full { grid-column: 1 / -1; }
+      .report-field input,
+      .report-field select,
+      .report-field textarea {
+        width: 100%;
         background: rgba(16, 18, 18, 0.72);
         color: var(--text);
         border: 1px solid var(--line);
@@ -272,22 +274,27 @@
         font-family: inherit;
         letter-spacing: 0;
       }
-      #cw-feedback .cw-field input::placeholder,
-      #cw-feedback .cw-field textarea::placeholder { color: rgba(199, 209, 200, 0.75); }
-      #cw-feedback .cw-field input:focus,
-      #cw-feedback .cw-field select:focus,
-      #cw-feedback .cw-field textarea:focus {
+      .report-field input::placeholder,
+      .report-field textarea::placeholder { color: rgba(199, 209, 200, 0.75); }
+      .report-field input:focus,
+      .report-field select:focus,
+      .report-field textarea:focus {
         outline: 2px solid rgba(224, 184, 76, 0.45);
         border-color: rgba(224, 184, 76, 0.45);
         box-shadow: none;
       }
-      #cw-feedback .cw-field input[type="checkbox"],
-      #cw-feedback .cw-field input[type="radio"] { accent-color: var(--button); }
-      #cw-feedback .cw-field .cw-error {
+      .report-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .report-row input[type="checkbox"] { accent-color: var(--button); width: auto; }
+      .report-error {
         color: var(--bad);
         margin-top: 6px;
+        font-size: 13px;
       }
-      #cw-feedback .cw-embed-form button[type="submit"] {
+      .report-submit {
         border: 0;
         border-radius: 8px;
         padding: 10px 14px;
@@ -299,13 +306,19 @@
         text-transform: none;
         letter-spacing: 0;
       }
-      #cw-feedback .cw-embed-form button[type="submit"]:hover { filter: brightness(1.08); }
+      .report-submit:hover { filter: brightness(1.08); }
+      .report-message {
+        color: var(--muted);
+        margin-top: 12px;
+        min-height: 20px;
+      }
       @media (max-width: 820px) {
         header { display: block; }
         .top-actions { margin-top: 14px; }
         .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .monitor-grid { grid-template-columns: 1fr; }
         .form-grid { grid-template-columns: 1fr; }
+        .report-grid { grid-template-columns: 1fr; }
         .deck { grid-template-columns: 1fr; }
       }
       @media (max-width: 620px) {
@@ -613,32 +626,90 @@
         <section>
           <h2>Bug Report</h2>
           <div class="report-intro">
-            <p>Use this form to report gameplay bugs, inventory issues, mining failures, desync, and server stability problems.</p>
+            <p>Use this form to report bugs in the web panel, monitoring, automation, setup flow, backups, or other management app behavior.</p>
+          </div>
+          <div class="report-actions">
+            <a class="button backup" href="{{ bug_report.game_bug_url }}" target="_blank" rel="noopener">Report Windrose Game Bug</a>
           </div>
           <div class="report-wrap">
-            <div id="cw-feedback"></div>
+            {% if bug_report.enabled %}
+            <form id="app-bug-report" class="report-form">
+              <div class="report-grid">
+                <div class="report-field full">
+                  <label for="report-summary">Bug summary</label>
+                  <input id="report-summary" name="summary" type="text" required>
+                  <div class="report-error" data-error-for="summary"></div>
+                </div>
+                <div class="report-field full">
+                  <label for="report-steps">Steps to reproduce</label>
+                  <textarea id="report-steps" name="steps" rows="5" required></textarea>
+                  <div class="report-error" data-error-for="steps"></div>
+                </div>
+                <div class="report-field full">
+                  <label for="report-expected">Expected result</label>
+                  <textarea id="report-expected" name="expected" rows="3"></textarea>
+                </div>
+                <div class="report-field full">
+                  <label for="report-actual">Actual result</label>
+                  <textarea id="report-actual" name="actual" rows="3"></textarea>
+                </div>
+                <div class="report-field">
+                  <label for="report-frequency">How often does it happen?</label>
+                  <select id="report-frequency" name="frequency">
+                    <option value="">Select one</option>
+                    <option value="always">Every time</option>
+                    <option value="often">Often</option>
+                    <option value="sometimes">Sometimes</option>
+                    <option value="rarely">Rarely</option>
+                    <option value="once">Once</option>
+                  </select>
+                </div>
+                <div class="report-field">
+                  <label for="report-platform">Platform</label>
+                  <select id="report-platform" name="platform" required>
+                    <option value="web" selected>Web</option>
+                    <option value="windows">Windows</option>
+                    <option value="mac">macOS</option>
+                    <option value="linux">Linux</option>
+                    <option value="ios">iOS</option>
+                    <option value="android">Android</option>
+                  </select>
+                </div>
+                <div class="report-field">
+                  <label for="report-email">Email (optional)</label>
+                  <input id="report-email" name="email" type="email">
+                </div>
+                <div class="report-field">
+                  <label for="report-files">Attachments</label>
+                  <input id="report-files" name="files" type="file" multiple accept="image/*,.txt,.log,.csv,.json,.xml,.zip,.pdf">
+                  <div class="small">Up to 5 files, 16 MB each, 64 MB total.</div>
+                </div>
+                <div class="report-field full">
+                  <div class="report-row">
+                    <input id="report-contact" name="contact" type="checkbox">
+                    <label for="report-contact">Can we contact you?</label>
+                  </div>
+                </div>
+              </div>
+              <div class="actions" style="padding: 0; margin: 16px 0 0;">
+                <button type="submit" class="report-submit">Submit App Bug</button>
+              </div>
+              <div id="report-message" class="report-message"></div>
+            </form>
+            {% else %}
+            <div class="empty">App bug reporting is not configured on this server yet.</div>
+            {% endif %}
           </div>
         </section>
       </div>
       <script>
         const tabs = Array.from(document.querySelectorAll(".tabs button"));
         const panels = Array.from(document.querySelectorAll(".tab-panel"));
-        let reportLoaded = false;
         function showTab(name) {
           tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
           panels.forEach((panel) => panel.classList.toggle("active", panel.id === name));
           localStorage.setItem("windrose-panel-tab", name);
           if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
-          if (name === "report") loadBugReport();
-        }
-        function loadBugReport() {
-          if (reportLoaded) return;
-          reportLoaded = true;
-          const script = document.createElement("script");
-          script.src = "https://feedback.computer-wizard.com.au/embed.js";
-          script.dataset.form = "wr-server-bug-report";
-          script.dataset.apiKey = "698b2a3cdd7c89d3d60fb800313127af";
-          document.body.appendChild(script);
         }
         function setText(name, value) {
           document.querySelectorAll(`[data-field="${name}"]`).forEach((node) => { node.textContent = value; });
@@ -715,6 +786,77 @@
             </tr>
           `).join("");
         }
+        async function submitBugReport(event) {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const message = document.getElementById("report-message");
+          document.querySelectorAll(".report-error").forEach((node) => { node.textContent = ""; });
+          message.textContent = "";
+
+          const summary = document.getElementById("report-summary").value.trim();
+          const steps = document.getElementById("report-steps").value.trim();
+          if (!summary) {
+            document.querySelector('[data-error-for="summary"]').textContent = "Bug summary is required.";
+            return;
+          }
+          if (!steps) {
+            document.querySelector('[data-error-for="steps"]').textContent = "Steps to reproduce are required.";
+            return;
+          }
+
+          const filesInput = document.getElementById("report-files");
+          const files = Array.from(filesInput.files || []);
+          if (files.length > 5) {
+            message.textContent = "Too many files. Maximum 5 attachments.";
+            return;
+          }
+          const maxFileBytes = 16 * 1024 * 1024;
+          const maxTotalBytes = 64 * 1024 * 1024;
+          const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+          if (files.some((file) => file.size > maxFileBytes)) {
+            message.textContent = "One or more files exceed the 16 MB limit.";
+            return;
+          }
+          if (totalBytes > maxTotalBytes) {
+            message.textContent = "Attachments exceed the 64 MB total limit.";
+            return;
+          }
+
+          const answers = {
+            28: summary,
+            29: steps,
+            30: document.getElementById("report-expected").value.trim(),
+            31: document.getElementById("report-actual").value.trim(),
+            32: document.getElementById("report-frequency").value,
+            33: document.getElementById("report-platform").value,
+            26: document.getElementById("report-email").value.trim(),
+            27: document.getElementById("report-contact").checked ? "1" : null
+          };
+
+          const body = new FormData();
+          body.append("answers", JSON.stringify(answers));
+          files.forEach((file) => body.append("attachments[]", file));
+
+          const submit = form.querySelector('button[type="submit"]');
+          submit.disabled = true;
+          message.textContent = "Submitting...";
+          try {
+            const response = await fetch("{{ url_for('report_submit') }}", {
+              method: "POST",
+              body
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+              throw new Error(data.error || `Request failed: ${response.status}`);
+            }
+            form.reset();
+            message.textContent = "Bug report submitted.";
+          } catch (error) {
+            message.textContent = `Submit failed: ${error.message}`;
+          } finally {
+            submit.disabled = false;
+          }
+        }
         async function refreshActiveTab() {
           const active = document.querySelector(".tabs button.active")?.dataset.tab || "overview";
           if (!["overview", "monitor", "players", "logs"].includes(active)) {
@@ -759,6 +901,10 @@
               if (field) field.value = value;
             });
           });
+        }
+        const reportForm = document.getElementById("app-bug-report");
+        if (reportForm) {
+          reportForm.addEventListener("submit", submitBugReport);
         }
       </script>
     </main>
