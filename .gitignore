@@ -1,0 +1,33 @@
+# Secrets and local environment
+.env
+.env.*
+panel/.env
+server_scripts/.discord_webhook
+
+# Live game/server data
+server-files/
+data/
+backups/
+steam-home/
+windrose_plus_data/
+panel/static/windroseplus/
+upstream-docker/
+windrose-server.sh.bak-*
+
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+panel/.venv/
+upstream-docker/.git/
+
+# Logs and transient monitor state
+*.log
+server_scripts/.last_*
+server_scripts/.broken_queue_*
+server_scripts/.monitor_*
+
+# Local shells/history
+.bash_history
+.bash_logout
+.bashrc
+.profile

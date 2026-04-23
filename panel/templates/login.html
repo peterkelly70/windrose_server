@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Wayward Winds Login</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #12100e;
+        --panel: rgba(28, 31, 31, 0.92);
+        --text: #fff8e8;
+        --muted: #c7d1c8;
+        --line: rgba(255, 248, 232, 0.18);
+        --button: #2f7865;
+        --bad: #e35d5d;
+        --good: #43c16f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 18px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          linear-gradient(180deg, rgba(18, 16, 14, 0.34), var(--bg)),
+          url("{{ url_for('static', filename='images/pirates-boar-fight.png') }}") center / cover fixed,
+          var(--bg);
+        color: var(--text);
+      }
+      main {
+        width: min(420px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+        box-shadow: 0 20px 54px rgba(0, 0, 0, 0.38);
+        backdrop-filter: blur(4px);
+      }
+      .mark {
+        width: 84px;
+        height: 58px;
+        object-fit: contain;
+        margin-bottom: 8px;
+        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.55));
+      }
+      h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 0; }
+      p { margin: 0 0 20px; color: var(--muted); }
+      label { display: block; margin: 14px 0 7px; color: var(--muted); }
+      input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(17, 19, 21, 0.88);
+        color: var(--text);
+        padding: 11px 12px;
+        font: inherit;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        margin-top: 18px;
+        padding: 11px 14px;
+        background: var(--button);
+        color: white;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      .flash { margin: 12px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); }
+      .flash.good { border-color: var(--good); }
+      .flash.bad { border-color: var(--bad); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="mark" src="{{ url_for('static', filename='images/pirate-ship.svg') }}" alt="">
+      <h1>Wayward Winds</h1>
+      <p>Server control panel</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" action="{{ url_for('login_post', next=request.args.get('next', '')) }}">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+        <button type="submit">Log In</button>
+      </form>
+    </main>
+  </body>
+</html>

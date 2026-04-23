@@ -1,0 +1,28 @@
+services:
+  windrose:
+    image: ${IMAGE_REPOSITORY:-indifferentbroccoli/windrose-server-docker}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${CONTAINER_NAME:-windrose}
+    hostname: ${HOSTNAME:-windrose}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      PUID: ${PUID:-1023}
+      PGID: ${PGID:-1023}
+      UPDATE_ON_START: ${UPDATE_ON_START:-true}
+      GENERATE_SETTINGS: ${GENERATE_SETTINGS:-true}
+      INVITE_CODE: ${INVITE_CODE:-}
+      SERVER_NAME: ${SERVER_NAME:-}
+      SERVER_PASSWORD: ${SERVER_PASSWORD:-}
+      MAX_PLAYERS: ${MAX_PLAYERS:-4}
+      P2P_PROXY_ADDRESS: ${P2P_PROXY_ADDRESS:-127.0.0.1}
+    volumes:
+      - ./server-files:/home/steam/server-files
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

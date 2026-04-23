@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Wayward Winds Map</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111816;
+        --water: #1e6470;
+        --deep-water: #123a48;
+        --land: #768f5d;
+        --land-edge: #e0c66e;
+        --sand: #d8c17a;
+        --text: #fff8e8;
+        --muted: #bed0ce;
+        --panel: rgba(18, 23, 22, 0.88);
+        --line: rgba(255, 248, 232, 0.18);
+        --chest: #e0b84c;
+        --spawn: #5fc28a;
+        --player: #64b6e8;
+        --user: #e06e88;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      body { overflow: hidden; }
+      #app { display: grid; grid-template-columns: 1fr 330px; height: 100vh; }
+      #map-wrap {
+        position: relative;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 36% 38%, rgba(83, 168, 156, 0.26), transparent 28%),
+          radial-gradient(circle at 70% 22%, rgba(224, 184, 76, 0.12), transparent 18%),
+          linear-gradient(160deg, var(--water), var(--deep-water));
+      }
+      #map-wrap::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          repeating-linear-gradient(0deg, rgba(255, 248, 232, 0.026) 0 1px, transparent 1px 9px),
+          repeating-linear-gradient(90deg, rgba(255, 248, 232, 0.018) 0 1px, transparent 1px 11px),
+          radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.25));
+        mix-blend-mode: screen;
+      }
+      svg { width: 100%; height: 100%; display: block; cursor: grab; }
+      svg:active { cursor: grabbing; }
+      .graticule { stroke: rgba(255, 248, 232, 0.13); stroke-width: 1500; fill: none; }
+      .route { stroke: rgba(224, 184, 76, 0.42); stroke-width: 4500; stroke-dasharray: 12000 14000; fill: none; }
+      .map-raster { opacity: 0.96; }
+      .fallback-note { color: #e0b84c; margin-top: 10px; }
+      .island-shadow { fill: rgba(0, 0, 0, 0.22); filter: blur(6000px); }
+      .island-sand { fill: var(--sand); opacity: 0.95; }
+      .island-land { fill: var(--land); stroke: rgba(71, 93, 54, 0.78); stroke-width: 2600; }
+      .reef { fill: none; stroke: rgba(255, 248, 232, 0.2); stroke-width: 1900; stroke-dasharray: 7000 9000; }
+      .patch { fill: rgba(50, 88, 47, 0.58); stroke: rgba(224, 198, 110, 0.48); stroke-width: 900; }
+      .pin text { fill: var(--text); font-size: 13500px; paint-order: stroke; stroke: rgba(0, 0, 0, 0.78); stroke-width: 3600px; pointer-events: none; }
+      .pin circle { stroke: rgba(0, 0, 0, 0.64); stroke-width: 2800; }
+      .pin line { stroke: rgba(255, 248, 232, 0.72); stroke-width: 1800; }
+      .pin.chest circle { fill: var(--chest); }
+      .pin.spawn circle { fill: var(--spawn); }
+      .pin.player circle { fill: var(--player); }
+      .pin.user circle { fill: var(--user); }
+      aside {
+        border-left: 1px solid var(--line);
+        background: var(--panel);
+        padding: 18px;
+        overflow: auto;
+      }
+      h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: 0; }
+      p { margin: 0; color: var(--muted); }
+      .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 16px 0; }
+      .stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: rgba(255, 255, 255, 0.04); }
+      .stat strong { display: block; font-size: 20px; }
+      .legend { display: grid; gap: 8px; margin: 14px 0; }
+      .legend span { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+      .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+      .catalog { margin-top: 18px; }
+      .catalog h2 { margin: 0 0 10px; font-size: 17px; }
+      .catalog ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+      .catalog li { color: var(--muted); border-bottom: 1px solid rgba(255, 248, 232, 0.08); padding-bottom: 6px; overflow-wrap: anywhere; }
+      button, a.button {
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: white;
+        background: #2f7865;
+        font-weight: 650;
+        cursor: pointer;
+        text-decoration: none;
+        font-size: 14px;
+      }
+      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+      .compass {
+        position: absolute;
+        left: 18px;
+        top: 18px;
+        z-index: 1;
+        width: 96px;
+        height: 96px;
+        opacity: 0.82;
+        pointer-events: none;
+      }
+      #tip {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        max-width: min(420px, calc(100% - 24px));
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(16, 20, 23, 0.86);
+        padding: 10px 12px;
+        color: var(--muted);
+        pointer-events: none;
+      }
+      @media (max-width: 860px) {
+        body { overflow: auto; }
+        #app { display: block; height: auto; min-height: 100vh; }
+        #map-wrap { height: 68vh; }
+        aside { border-left: 0; border-top: 1px solid var(--line); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="map-wrap">
+        <svg class="compass" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="42" fill="rgba(16,20,23,0.34)" stroke="rgba(255,248,232,0.45)" stroke-width="2"></circle>
+          <path d="M50 9 L58 48 L50 91 L42 48 Z" fill="#e0b84c"></path>
+          <path d="M9 50 L48 42 L91 50 L48 58 Z" fill="rgba(255,248,232,0.76)"></path>
+          <circle cx="50" cy="50" r="7" fill="#123a48" stroke="#fff8e8" stroke-width="2"></circle>
+          <text x="50" y="20" text-anchor="middle" fill="#fff8e8" font-size="12" font-weight="700">N</text>
+        </svg>
+        <svg id="map" aria-label="Wayward Winds server map"></svg>
+        <div id="tip">Drag to pan. Use the mouse wheel or pinch to zoom.</div>
+      </div>
+      <aside>
+        <h1>Wayward Winds Map</h1>
+        <p id="subtitle">Loading save data...</p>
+        <p id="source-note" class="fallback-note"></p>
+        <div class="toolbar">
+          <button id="reset">Reset View</button>
+          <a class="button" href="/">Panel</a>
+          <a class="button" href="/livemap">Live Shell</a>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="legend">
+          <span><i class="dot" style="background: var(--chest)"></i> Chests and scenario loot</span>
+          <span><i class="dot" style="background: var(--spawn)"></i> Spawn points and ship checkpoints</span>
+          <span><i class="dot" style="background: var(--player)"></i> Last saved player positions</span>
+          <span><i class="dot" style="background: var(--user)"></i> User map markers</span>
+        </div>
+        <div class="catalog">
+          <h2>Known POI Markers</h2>
+          <ul id="catalog"></ul>
+        </div>
+      </aside>
+    </div>
+    <script>
+      const svg = document.getElementById('map');
+      const stats = document.getElementById('stats');
+      const catalog = document.getElementById('catalog');
+      const subtitle = document.getElementById('subtitle');
+      const resetButton = document.getElementById('reset');
+      let viewBox = null;
+      let initialViewBox = null;
+      let dragging = false;
+      let lastPoint = null;
+
+      function setViewBox(box) {
+        viewBox = box;
+        svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
+      }
+
+      function svgPoint(event) {
+        const point = svg.createSVGPoint();
+        point.x = event.clientX;
+        point.y = event.clientY;
+        return point.matrixTransform(svg.getScreenCTM().inverse());
+      }
+
+      function esc(text) {
+        return String(text || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      }
+
+      function cleanName(name) {
+        return String(name || 'Unknown')
+          .replace(/\.CurrScore$/i, '')
+          .replace(/^CJ\./, '')
+          .replace(/^Easy\./, '')
+          .replace(/\./g, ' ')
+          .replace(/([a-z])([A-Z])/g, '$1 $2')
+          .replace(/\bUniversall\b/g, 'Universal')
+          .trim();
+      }
+
+      function makeBlob(cx, cy, rx, ry, seed, scale = 1) {
+        const points = [];
+        const steps = 18;
+        for (let i = 0; i < steps; i++) {
+          const a = (Math.PI * 2 * i) / steps;
+          const wobble = 0.82 + 0.22 * Math.sin(seed * 1.7 + i * 1.9) + 0.11 * Math.cos(seed * 0.9 + i * 3.1);
+          points.push([cx + Math.cos(a) * rx * wobble * scale, cy + Math.sin(a) * ry * wobble * scale]);
+        }
+        return points.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ') + ' Z';
+      }
+
+      function clusterPoints(points, radius) {
+        const clusters = [];
+        points.forEach(point => {
+          let best = null;
+          let bestDistance = Infinity;
+          clusters.forEach(cluster => {
+            const dx = cluster.x - point.x;
+            const dy = cluster.y - point.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance < radius && distance < bestDistance) {
+              best = cluster;
+              bestDistance = distance;
+            }
+          });
+          if (!best) {
+            clusters.push({ x: point.x, y: point.y, points: [point] });
+          } else {
+            best.points.push(point);
+            best.x = best.points.reduce((sum, item) => sum + item.x, 0) / best.points.length;
+            best.y = best.points.reduce((sum, item) => sum + item.y, 0) / best.points.length;
+          }
+        });
+        return clusters;
+      }
+
+      function graticuleFor(bounds, step) {
+        const lines = [];
+        const minX = Math.floor(bounds.min_x / step) * step;
+        const maxX = Math.ceil(bounds.max_x / step) * step;
+        const minY = Math.floor(bounds.min_y / step) * step;
+        const maxY = Math.ceil(bounds.max_y / step) * step;
+        for (let x = minX; x <= maxX; x += step) lines.push(`<path class="graticule" d="M ${x} ${-maxY} L ${x} ${-minY}"></path>`);
+        for (let y = minY; y <= maxY; y += step) lines.push(`<path class="graticule" d="M ${minX} ${-y} L ${maxX} ${-y}"></path>`);
+        return lines.join('');
+      }
+
+      function draw(data) {
+        const b = data.bounds;
+        const side = Math.max(b.max_x - b.min_x, b.max_y - b.min_y);
+        const pad = side * 0.08;
+        initialViewBox = { x: b.min_x - pad, y: -b.max_y - pad, w: (b.max_x - b.min_x) + pad * 2, h: (b.max_y - b.min_y) + pad * 2 };
+        setViewBox({...initialViewBox});
+
+        const importantPoints = data.pins.filter(pin => pin.type !== 'player').map(pin => ({x: pin.x, y: pin.y}));
+        const terrainPoints = data.terrain.map(t => ({x: t.x + t.w / 2, y: t.y + t.h / 2}));
+        const clusters = clusterPoints([...importantPoints, ...terrainPoints], side * 0.09);
+        const islands = clusters.map((cluster, index) => {
+          const count = cluster.points.length;
+          const rx = Math.max(side * 0.035, Math.min(side * 0.105, side * (0.026 + Math.sqrt(count) * 0.012)));
+          const ry = rx * (0.62 + (index % 5) * 0.08);
+          const x = cluster.x;
+          const y = -cluster.y;
+          return `
+            <path class="island-shadow" d="${makeBlob(x + side * 0.008, y + side * 0.01, rx, ry, index + 11, 1.08)}"></path>
+            <path class="island-sand" d="${makeBlob(x, y, rx, ry, index + 17, 1.0)}"></path>
+            <path class="island-land" d="${makeBlob(x, y, rx * 0.72, ry * 0.68, index + 29, 1.0)}"></path>
+            <path class="reef" d="${makeBlob(x, y, rx * 1.18, ry * 1.16, index + 41, 1.0)}"></path>
+          `;
+        }).join('');
+        const patches = data.terrain.map(t => `<rect class="patch" x="${t.x}" y="${-(t.y + t.h)}" width="${Math.max(t.w, side * 0.004)}" height="${Math.max(t.h, side * 0.004)}" rx="${side * 0.002}"></rect>`).join('');
+        const routePoints = data.pins.filter(pin => pin.type === 'chest').slice(0, 18).sort((a, b) => a.x - b.x).map((pin, i) => `${i ? 'L' : 'M'} ${pin.x} ${-pin.y}`).join(' ');
+        const route = routePoints ? `<path class="route" d="${routePoints}"></path>` : '';
+        const pins = data.pins.map(pin => {
+          const r = pin.type === 'chest' ? 10500 : pin.type === 'player' ? 9400 : pin.type === 'user' ? 8800 : 8000;
+          const label = cleanName(pin.name);
+          return `<g class="pin ${pin.type}" transform="translate(${pin.x} ${-pin.y})"><title>${esc(label)}</title><line x1="0" y1="0" x2="${r * 1.35}" y2="${-r * 1.1}"></line><circle r="${r}"></circle><text x="${r * 1.55}" y="${-r * 0.92}">${esc(label)}</text></g>`;
+        }).join('');
+        const raster = data.map_background
+          ? `<image class="map-raster" href="${esc(data.map_background)}" x="${b.min_x}" y="${-b.max_y}" width="${b.max_x - b.min_x}" height="${b.max_y - b.min_y}" preserveAspectRatio="none"></image>`
+          : '';
+        const generatedChart = data.map_background
+          ? ''
+          : `<g filter="url(#rough)">${islands}</g>${patches}`;
+
+        svg.innerHTML = `<defs>
+          <filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.011" numOctaves="3" seed="8"></feTurbulence><feDisplacementMap in="SourceGraphic" scale="9500"></feDisplacementMap></filter>
+        </defs><g>${raster}${graticuleFor(b, side / 8)}${route}${generatedChart}${pins}</g>`;
+
+        subtitle.textContent = `World ${data.world_id}. Generated from save data at ${new Date(data.generated_at * 1000).toLocaleString()}.`;
+        document.getElementById('source-note').textContent = data.map_background
+          ? `Using captured map background: ${data.map_background}`
+          : 'This is a generated save-data chart. Add /home/windrose/panel/static/images/windrose-map.png to use a real captured map background.';
+        stats.innerHTML = [
+          ['Land patches', data.counts.terrain],
+          ['Pins', data.counts.pins],
+          ['Chests', data.counts.chests],
+          ['Spawns', data.counts.spawns],
+          ['Players', data.counts.players],
+          ['POI flags', data.counts.markers],
+        ].map(([label, value]) => `<div class="stat"><strong>${value}</strong>${label}</div>`).join('');
+        catalog.innerHTML = data.marker_catalog.length
+          ? data.marker_catalog.map(item => `<li>${item.active ? 'Seen' : 'Hidden'} - ${esc(item.name)}</li>`).join('')
+          : '<li>No quest marker flags found yet.</li>';
+      }
+
+      svg.addEventListener('pointerdown', event => {
+        dragging = true;
+        lastPoint = svgPoint(event);
+        svg.setPointerCapture(event.pointerId);
+      });
+      svg.addEventListener('pointermove', event => {
+        if (!dragging || !lastPoint) return;
+        const p = svgPoint(event);
+        setViewBox({ ...viewBox, x: viewBox.x + lastPoint.x - p.x, y: viewBox.y + lastPoint.y - p.y });
+      });
+      svg.addEventListener('pointerup', () => { dragging = false; lastPoint = null; });
+      svg.addEventListener('wheel', event => {
+        event.preventDefault();
+        const p = svgPoint(event);
+        const scale = event.deltaY < 0 ? 0.82 : 1.22;
+        const nw = viewBox.w * scale;
+        const nh = viewBox.h * scale;
+        setViewBox({ x: p.x - (p.x - viewBox.x) * scale, y: p.y - (p.y - viewBox.y) * scale, w: nw, h: nh });
+      }, { passive: false });
+      resetButton.addEventListener('click', () => setViewBox({...initialViewBox}));
+
+      fetch('/api/static-map')
+        .then(r => r.json())
+        .then(draw)
+        .catch(() => { subtitle.textContent = 'Map data could not be loaded.'; });
+    </script>
+  </body>
+</html>
