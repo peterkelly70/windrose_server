@@ -101,6 +101,24 @@ Panel endpoints:
 - `/download/world-migration` - zip current world files plus install scripts.
 - `/livemap` - public live map, if WindrosePlus data exists.
 
+The panel has tabs for Overview, Setup, Monitor, Players, and Logs.
+
+The Setup tab can update:
+
+- server name
+- invite code
+- max players
+- server password
+- P2P proxy address
+- direct connection settings
+- active world scaling values
+- creature health and damage scaling
+- ship health and damage scaling
+- boarding difficulty scaling
+- player and ship stat scaling
+
+The Setup tab also lists current world folders and includes a guarded Create New World action. That action makes a spot backup, stops the server, archives current world folders under `/home/windrose/backups/archived-worlds`, clears the active world ID, and starts the server again.
+
 ## Monitor
 
 `windrose-monitor.timer` runs the monitor every minute.
@@ -183,4 +201,3 @@ git push
 ```
 
 Do not force-add ignored files unless you are certain they contain no secrets or live save data.
-

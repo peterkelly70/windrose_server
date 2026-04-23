@@ -103,16 +103,18 @@
         gap: 8px;
         margin: 0 0 18px;
       }
-      .tabs a {
+      .tabs button {
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 8px 11px;
         color: var(--text);
         background: rgba(16, 18, 18, 0.72);
-        text-decoration: none;
         font-size: 13px;
         font-weight: 650;
       }
+      .tabs button.active { background: var(--button); }
+      .tab-panel { display: none; }
+      .tab-panel.active { display: block; }
       section { margin-top: 18px; overflow: hidden; }
       section h2 {
         margin: 0;
@@ -200,6 +202,37 @@
       .metric-row:last-child { border-bottom: 0; }
       .metric-row span:first-child { color: var(--muted); }
       .metric-row span:last-child { text-align: right; overflow-wrap: anywhere; }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        padding: 14px;
+      }
+      .field label {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 6px;
+      }
+      input[type="text"], input[type="number"], input[type="password"] {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 11px;
+        background: rgba(16, 18, 18, 0.72);
+        color: var(--text);
+        font: inherit;
+      }
+      .check-field {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 24px;
+      }
+      .danger-zone {
+        padding: 14px;
+        border-top: 1px solid var(--line);
+      }
       .flash { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); }
       .flash.good { border: 1px solid var(--good); }
       .flash.bad { border: 1px solid var(--bad); }
@@ -208,6 +241,7 @@
         .top-actions { margin-top: 14px; }
         .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .monitor-grid { grid-template-columns: 1fr; }
+        .form-grid { grid-template-columns: 1fr; }
         .deck { grid-template-columns: 1fr; }
       }
       @media (max-width: 620px) {
@@ -245,81 +279,149 @@
       {% endwith %}
 
       <nav class="tabs" aria-label="Panel sections">
-        <a href="#overview">Overview</a>
-        <a href="#monitor">Monitor</a>
-        <a href="#players">Players</a>
-        <a href="#logs">Logs</a>
+        <button type="button" data-tab="overview">Overview</button>
+        <button type="button" data-tab="setup">Setup</button>
+        <button type="button" data-tab="monitor">Monitor</button>
+        <button type="button" data-tab="players">Players</button>
+        <button type="button" data-tab="logs">Logs</button>
       </nav>
 
-      <div class="deck" id="overview">
-        <div class="grid">
-          <div class="tile">
-            <div class="label">Players Online</div>
-            <div class="value {{ 'good' if game.online_count else 'warn' }}">{{ game.online_count }} / {{ config.max_players }}</div>
-            <div class="small">{{ game.last_server_state }}</div>
+      <div id="overview" class="tab-panel">
+        <div class="deck">
+          <div class="grid">
+            <div class="tile">
+              <div class="label">Players Online</div>
+              <div class="value {{ 'good' if game.online_count else 'warn' }}">{{ game.online_count }} / {{ config.max_players }}</div>
+              <div class="small">{{ game.last_server_state }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Container</div>
+              <div class="value {{ 'good' if status.container == 'running' else 'bad' }}">{{ status.container }}</div>
+              <div class="small">{{ status.health }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Invite Code</div>
+              <div class="value">{{ config.invite_code }}</div>
+              <div class="small">Password: {{ 'on' if config.password_protected else 'off' }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Terrain</div>
+              <div class="value">{{ game.last_terrain }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">World</div>
+              <div class="value">{{ config.world_id }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Backend Session</div>
+              <div class="value">{{ game.last_session or 'unknown' }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Game Version</div>
+              <div class="value">{{ version.game_version }}</div>
+              <div class="small">Steam build {{ version.steam_build }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Deployment</div>
+              <div class="value">{{ version.deployment_id }}</div>
+              <div class="small">Release {{ version.release_version }}</div>
+            </div>
+            <div class="tile">
+              <div class="label">Latest Backup</div>
+              <div class="value">{{ backups.latest }}</div>
+              <div class="small">{{ backups.latest_size }} · {{ backups.count }} kept</div>
+            </div>
+            <div class="tile">
+              <div class="label">Last Log</div>
+              <div class="value">{{ game.last_log_time or 'unknown' }}</div>
+              <div class="small">Started {{ status.started_at }}</div>
+            </div>
           </div>
-          <div class="tile">
-            <div class="label">Container</div>
-            <div class="value {{ 'good' if status.container == 'running' else 'bad' }}">{{ status.container }}</div>
-            <div class="small">{{ status.health }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">Invite Code</div>
-            <div class="value">{{ config.invite_code }}</div>
-            <div class="small">Password: {{ 'on' if config.password_protected else 'off' }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">Terrain</div>
-            <div class="value">{{ game.last_terrain }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">World</div>
-            <div class="value">{{ config.world_id }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">Backend Session</div>
-            <div class="value">{{ game.last_session or 'unknown' }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">Game Version</div>
-            <div class="value">{{ version.game_version }}</div>
-            <div class="small">Steam build {{ version.steam_build }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">Deployment</div>
-            <div class="value">{{ version.deployment_id }}</div>
-            <div class="small">Release {{ version.release_version }}</div>
-          </div>
-          <div class="tile">
-            <div class="label">Latest Backup</div>
-            <div class="value">{{ backups.latest }}</div>
-            <div class="small">{{ backups.latest_size }} · {{ backups.count }} kept</div>
-          </div>
-          <div class="tile">
-            <div class="label">Last Log</div>
-            <div class="value">{{ game.last_log_time or 'unknown' }}</div>
-            <div class="small">Started {{ status.started_at }}</div>
+          <div class="map-panel">
+            <img src="{{ url_for('static', filename='images/pirates-boar-fight.png') }}" alt="">
+            <span>Keep a weather eye on the saves.</span>
           </div>
         </div>
-        <div class="map-panel">
-          <img src="{{ url_for('static', filename='images/pirates-boar-fight.png') }}" alt="">
-          <span>Keep a weather eye on the saves.</span>
+
+        <div class="actions">
+          <form method="post" action="{{ url_for('action', action='start') }}"><button>Start</button></form>
+          <form method="post" action="{{ url_for('action', action='restart') }}" onsubmit="return confirm('Restart the game server now? Connected players will be kicked.')"><button class="restart">Restart</button></form>
+          <form method="post" action="{{ url_for('action', action='stop') }}" onsubmit="return confirm('Stop the game server now? Connected players will be kicked.')"><button class="stop">Stop</button></form>
+          <form method="post" action="{{ url_for('action', action='update-check') }}"><button class="update">Check SteamCMD Update</button></form>
+          <form method="post" action="{{ url_for('action', action='update') }}" onsubmit="return confirm('Update and restart the game server now? Connected players will be kicked.')"><button class="update">Update + Restart</button></form>
+          <form method="post" action="{{ url_for('action', action='spot-backup') }}"><button class="backup">Spot Backup</button></form>
+          <a class="button migrate" href="{{ url_for('download_world_migration') }}">Migrate World</a>
+          <form method="post" action="{{ url_for('action', action='spot-restore') }}" onsubmit="return confirm('Restore the latest backup now? The game server will stop, current data will be replaced, and players will be kicked.')"><button class="restore">Spot Restore</button></form>
+          <form method="post" action="{{ url_for('action', action='notify-test') }}"><button>Discord Test</button></form>
         </div>
       </div>
 
-      <div class="actions">
-        <form method="post" action="{{ url_for('action', action='start') }}"><button>Start</button></form>
-        <form method="post" action="{{ url_for('action', action='restart') }}" onsubmit="return confirm('Restart the game server now? Connected players will be kicked.')"><button class="restart">Restart</button></form>
-        <form method="post" action="{{ url_for('action', action='stop') }}" onsubmit="return confirm('Stop the game server now? Connected players will be kicked.')"><button class="stop">Stop</button></form>
-        <form method="post" action="{{ url_for('action', action='update-check') }}"><button class="update">Check SteamCMD Update</button></form>
-        <form method="post" action="{{ url_for('action', action='update') }}" onsubmit="return confirm('Update and restart the game server now? Connected players will be kicked.')"><button class="update">Update + Restart</button></form>
-        <form method="post" action="{{ url_for('action', action='spot-backup') }}"><button class="backup">Spot Backup</button></form>
-        <a class="button migrate" href="{{ url_for('download_world_migration') }}">Migrate World</a>
-        <form method="post" action="{{ url_for('action', action='spot-restore') }}" onsubmit="return confirm('Restore the latest backup now? The game server will stop, current data will be replaced, and players will be kicked.')"><button class="restore">Spot Restore</button></form>
-        <form method="post" action="{{ url_for('action', action='notify-test') }}"><button>Discord Test</button></form>
+      <div id="setup" class="tab-panel">
+        <section>
+          <h2>Setup</h2>
+          <form method="post" action="{{ url_for('settings') }}">
+            <div class="form-grid">
+              <div class="field"><label for="server_name">Server Name</label><input id="server_name" name="server_name" type="text" value="{{ config.server_name }}"></div>
+              <div class="field"><label for="invite_code">Invite Code</label><input id="invite_code" name="invite_code" type="text" value="{{ config.invite_code }}"></div>
+              <div class="field"><label for="max_players">Max Players</label><input id="max_players" name="max_players" type="number" min="1" max="32" value="{{ config.max_players }}"></div>
+              <div class="field"><label for="password">Server Password</label><input id="password" name="password" type="password" value="{{ config.password }}"></div>
+              <div class="field"><label for="p2p_proxy">P2P Proxy Address</label><input id="p2p_proxy" name="p2p_proxy" type="text" value="{{ config.p2p_proxy }}"></div>
+              <div class="check-field"><input id="use_direct_connection" name="use_direct_connection" type="checkbox" {% if config.use_direct_connection %}checked{% endif %}><label for="use_direct_connection">Use Direct Connection</label></div>
+              <div class="field"><label for="direct_connection_server_address">Direct Server Address</label><input id="direct_connection_server_address" name="direct_connection_server_address" type="text" value="{{ config.direct_connection_server_address }}"></div>
+              <div class="field"><label for="direct_connection_server_port">Direct Server Port</label><input id="direct_connection_server_port" name="direct_connection_server_port" type="number" min="1" max="65535" value="{{ config.direct_connection_server_port }}"></div>
+              <div class="field"><label for="direct_connection_proxy_address">Direct Proxy Bind Address</label><input id="direct_connection_proxy_address" name="direct_connection_proxy_address" type="text" value="{{ config.direct_connection_proxy_address }}"></div>
+            </div>
+            <h2>World Scaling</h2>
+            {% if world_settings.error %}
+              <div class="empty">{{ world_settings.error }}</div>
+            {% else %}
+              <div class="form-grid">
+                {% for setting in world_settings.float_parameters %}
+                  <div class="field">
+                    <label for="{{ setting.field }}">{{ setting.label }}</label>
+                    <input id="{{ setting.field }}" name="{{ setting.field }}" type="number" min="0" max="20" step="0.01" value="{{ setting.value }}">
+                    <div class="small">{{ setting.tag }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+              <div class="empty">Suggested public-server baseline: creature health 0.1, creature damage 0.9, ship health 1.0, ship damage 0.9, boarding difficulty 0.9, player stat scaling 0.9, ship stat scaling 0.</div>
+              <div class="actions" style="padding: 0 14px;">
+                <button type="button" class="backup" id="baseline-settings">Fill Public Baseline</button>
+              </div>
+            {% endif %}
+            <div class="actions" style="padding: 0 14px 14px;"><button class="update">Save Settings</button></div>
+          </form>
+        </section>
+
+        <section>
+          <h2>Worlds</h2>
+          {% if worlds %}
+            <table>
+              <thead><tr><th>World ID</th><th>Name</th><th>Preset</th><th>Size</th><th>Modified</th></tr></thead>
+              <tbody>
+                {% for world in worlds %}
+                  <tr>
+                    <td data-label="World ID">{{ world.id }}</td>
+                    <td data-label="Name">{{ world.name or '-' }}</td>
+                    <td data-label="Preset">{{ world.preset }}</td>
+                    <td data-label="Size">{{ world.size }}</td>
+                    <td data-label="Modified">{{ world.mtime }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <div class="empty">No world folders found.</div>
+          {% endif %}
+          <div class="danger-zone">
+            <form method="post" action="{{ url_for('action', action='new-world') }}" onsubmit="return confirm('Create a new world now? This will make a backup, stop the server, archive current world folders, clear the active world ID, and start the server. Connected players will be kicked.')">
+              <button class="restore">Create New World</button>
+            </form>
+          </div>
+        </section>
       </div>
 
-      <section id="monitor">
+      <section id="monitor" class="tab-panel">
         <h2>Monitor</h2>
         <div class="monitor-grid">
           <div class="monitor-card">
@@ -351,7 +453,7 @@
         {% endif %}
       </section>
 
-      <section id="players">
+      <section id="players" class="tab-panel">
         <h2>Players</h2>
         {% if game.players %}
           <table>
@@ -381,23 +483,56 @@
         {% endif %}
       </section>
 
-      {% if game.latest_errors %}
-        <section>
-          <h2>Recent Critical Events</h2>
-          <pre>{% for item in game.latest_errors %}{{ item }}
+      <div id="logs" class="tab-panel">
+        {% if game.latest_errors %}
+          <section>
+            <h2>Recent Critical Events</h2>
+            <pre>{% for item in game.latest_errors %}{{ item }}
 {% endfor %}</pre>
+          </section>
+        {% endif %}
+
+        <section>
+          <h2>Docker Status</h2>
+          <pre>{{ status.ps }}</pre>
         </section>
-      {% endif %}
 
-      <section>
-        <h2>Docker Status</h2>
-        <pre>{{ status.ps }}</pre>
-      </section>
-
-      <section id="logs">
-        <h2>Recent Logs</h2>
-        <pre>{{ logs }}</pre>
-      </section>
+        <section>
+          <h2>Recent Logs</h2>
+          <pre>{{ logs }}</pre>
+        </section>
+      </div>
+      <script>
+        const tabs = Array.from(document.querySelectorAll(".tabs button"));
+        const panels = Array.from(document.querySelectorAll(".tab-panel"));
+        function showTab(name) {
+          tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
+          panels.forEach((panel) => panel.classList.toggle("active", panel.id === name));
+          localStorage.setItem("windrose-panel-tab", name);
+          if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+        }
+        const initial = new URLSearchParams(location.search).get("tab") || location.hash.slice(1) || localStorage.getItem("windrose-panel-tab") || "overview";
+        tabs.forEach((tab) => tab.addEventListener("click", () => showTab(tab.dataset.tab)));
+        showTab(tabs.some((tab) => tab.dataset.tab === initial) ? initial : "overview");
+        const baseline = document.getElementById("baseline-settings");
+        if (baseline) {
+          baseline.addEventListener("click", () => {
+            const values = {
+              world_float_WDS_Parameter_MobHealthMultiplier: "0.1",
+              world_float_WDS_Parameter_MobDamageMultiplier: "0.9",
+              world_float_WDS_Parameter_ShipsHealthMultiplier: "1",
+              world_float_WDS_Parameter_ShipsDamageMultiplier: "0.9",
+              world_float_WDS_Parameter_BoardingDifficultyMultiplier: "0.9",
+              world_float_WDS_Parameter_Coop_StatsCorrectionModifier: "0.9",
+              world_float_WDS_Parameter_Coop_ShipStatsCorrectionModifier: "0"
+            };
+            Object.entries(values).forEach(([id, value]) => {
+              const field = document.getElementById(id);
+              if (field) field.value = value;
+            });
+          });
+        }
+      </script>
     </main>
   </body>
 </html>

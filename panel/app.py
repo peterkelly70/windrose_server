@@ -24,6 +24,7 @@ ROOT = Path("/home/windrose")
 SCRIPT = ROOT / "windrose-server.sh"
 SERVER_FILES = ROOT / "server-files"
 SERVER_JSON = SERVER_FILES / "R5" / "ServerDescription.json"
+ENV_FILE = ROOT / ".env"
 GAME_LOG = SERVER_FILES / "R5" / "Saved" / "Logs" / "R5.log"
 STEAM_MANIFEST = SERVER_FILES / "steamapps" / "appmanifest_4129620.acf"
 BACKUP_DIR = ROOT / "backups"
@@ -33,6 +34,15 @@ PUBLIC_LIVEMAP = ROOT / "panel" / "static" / "windroseplus" / "livemap" / "index
 WORLDS_DIR = SERVER_FILES / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 MIGRATION_WORLD_TARGET = Path("server-files") / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 BROCCOLI_WORLD_TARGET = Path("server-files") / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
+WORLD_SETTING_LABELS = {
+    "WDS.Parameter.MobHealthMultiplier": "Creature Health",
+    "WDS.Parameter.MobDamageMultiplier": "Creature Damage",
+    "WDS.Parameter.ShipsHealthMultiplier": "Ship Health",
+    "WDS.Parameter.ShipsDamageMultiplier": "Ship Damage",
+    "WDS.Parameter.BoardingDifficultyMultiplier": "Boarding Difficulty",
+    "WDS.Parameter.Coop.StatsCorrectionModifier": "Player Stat Scaling",
+    "WDS.Parameter.Coop.ShipStatsCorrectionModifier": "Ship Stat Scaling",
+}
 
 APP_USER = os.environ.get("WINDROSE_PANEL_USER", "")
 APP_PASSWORD = os.environ.get("WINDROSE_PANEL_PASSWORD", "")
@@ -210,9 +220,261 @@ def read_config():
         "server_name": desc.get("ServerName", ""),
         "invite_code": desc.get("InviteCode", ""),
         "password_protected": desc.get("IsPasswordProtected", False),
+        "password": desc.get("Password", ""),
         "max_players": desc.get("MaxPlayerCount", ""),
         "world_id": desc.get("WorldIslandId", ""),
         "p2p_proxy": desc.get("P2pProxyAddress", ""),
+        "use_direct_connection": desc.get("UseDirectConnection", False),
+        "direct_connection_server_address": desc.get("DirectConnectionServerAddress", ""),
+        "direct_connection_server_port": desc.get("DirectConnectionServerPort", 7777),
+        "direct_connection_proxy_address": desc.get("DirectConnectionProxyAddress", "0.0.0.0"),
+    }
+
+
+def read_env_file(path):
+    values = {}
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        values[key] = value
+    return values
+
+
+def write_env_file(path, updates):
+    existing_lines = []
+    try:
+        existing_lines = path.read_text().splitlines()
+    except OSError:
+        pass
+
+    seen = set()
+    output = []
+    for line in existing_lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            output.append(line)
+            continue
+        key, _ = stripped.split("=", 1)
+        if key in updates:
+            output.append(f"{key}={updates[key]}")
+            seen.add(key)
+        else:
+            output.append(line)
+
+    for key, value in updates.items():
+        if key not in seen:
+            output.append(f"{key}={value}")
+
+    path.write_text("\n".join(output) + "\n")
+
+
+def load_server_description():
+    data = read_json_file(SERVER_JSON)
+    if data is None or "error" in data:
+        raise ValueError(data.get("error", f"Unable to read {SERVER_JSON}") if isinstance(data, dict) else f"Unable to read {SERVER_JSON}")
+    data.setdefault("ServerDescription_Persistent", {})
+    return data
+
+
+def save_server_description(data):
+    tmp = SERVER_JSON.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent="\t") + "\n")
+    tmp.replace(SERVER_JSON)
+
+
+def active_world_description_path(world_id=None):
+    world_id = world_id or read_config().get("world_id", "")
+    if not world_id:
+        return None
+    return WORLDS_DIR / world_id / "WorldDescription.json"
+
+
+def world_setting_key(tag_name):
+    return json.dumps({"TagName": tag_name}, separators=(", ", ": "))
+
+
+def read_world_settings():
+    path = active_world_description_path()
+    if path is None:
+        return {"error": "No active world ID is configured.", "float_parameters": []}
+    data = read_json_file(path)
+    if data is None or "error" in data:
+        return {"error": data.get("error", f"Unable to read {path}") if isinstance(data, dict) else f"Unable to read {path}", "float_parameters": []}
+
+    params = data.get("WorldDescription", {}).get("WorldSettings", {}).get("FloatParameters", {})
+    values = []
+    for tag_name, label in WORLD_SETTING_LABELS.items():
+        key = world_setting_key(tag_name)
+        values.append({
+            "tag": tag_name,
+            "field": "world_float_" + re.sub(r"[^A-Za-z0-9_]", "_", tag_name),
+            "key": key,
+            "label": label,
+            "value": params.get(key, 1),
+        })
+    return {"error": "", "path": str(path), "float_parameters": values}
+
+
+def update_world_settings(form):
+    path = active_world_description_path()
+    if path is None:
+        raise ValueError("No active world ID is configured.")
+    data = read_json_file(path)
+    if data is None or "error" in data:
+        raise ValueError(data.get("error", f"Unable to read {path}") if isinstance(data, dict) else f"Unable to read {path}")
+
+    world = data.setdefault("WorldDescription", {})
+    settings = world.setdefault("WorldSettings", {})
+    params = settings.setdefault("FloatParameters", {})
+
+    for tag_name in WORLD_SETTING_LABELS:
+        field = "world_float_" + re.sub(r"[^A-Za-z0-9_]", "_", tag_name)
+        raw = form.get(field)
+        if raw is None or raw == "":
+            continue
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"{WORLD_SETTING_LABELS[tag_name]} must be a number.") from exc
+        if value < 0 or value > 20:
+            raise ValueError(f"{WORLD_SETTING_LABELS[tag_name]} must be between 0 and 20.")
+        params[world_setting_key(tag_name)] = value
+
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent="\t") + "\n")
+    tmp.replace(path)
+
+
+def update_server_settings(form):
+    data = load_server_description()
+    desc = data["ServerDescription_Persistent"]
+
+    server_name = form.get("server_name", "").strip() or "Wayward Winds"
+    invite_code = form.get("invite_code", "").strip()
+    password = form.get("password", "")
+    p2p_proxy = form.get("p2p_proxy", "").strip() or "127.0.0.1"
+    direct_address = form.get("direct_connection_server_address", "").strip()
+    direct_proxy = form.get("direct_connection_proxy_address", "").strip() or "0.0.0.0"
+
+    try:
+        max_players = max(1, min(32, int(form.get("max_players", "8"))))
+    except ValueError as exc:
+        raise ValueError("Max players must be a number.") from exc
+
+    try:
+        direct_port = max(1, min(65535, int(form.get("direct_connection_server_port", "7777"))))
+    except ValueError as exc:
+        raise ValueError("Direct connection port must be a number.") from exc
+
+    use_direct = form.get("use_direct_connection") == "on"
+
+    desc["ServerName"] = server_name
+    desc["InviteCode"] = invite_code
+    desc["IsPasswordProtected"] = bool(password)
+    desc["Password"] = password
+    desc["MaxPlayerCount"] = max_players
+    desc["P2pProxyAddress"] = p2p_proxy
+    desc["UseDirectConnection"] = use_direct
+    desc["DirectConnectionServerAddress"] = direct_address
+    desc["DirectConnectionServerPort"] = direct_port
+    desc["DirectConnectionProxyAddress"] = direct_proxy
+
+    save_server_description(data)
+    update_world_settings(form)
+    write_env_file(ENV_FILE, {
+        "SERVER_NAME": server_name,
+        "INVITE_CODE": invite_code,
+        "SERVER_PASSWORD": password,
+        "MAX_PLAYERS": str(max_players),
+        "P2P_PROXY_ADDRESS": p2p_proxy,
+        "GENERATE_SETTINGS": "false",
+    })
+
+    return {
+        "ok": True,
+        "code": 0,
+        "stdout": "Settings saved. Restart the server for all changes to apply.",
+        "stderr": "",
+    }
+
+
+def world_summary():
+    worlds = []
+    if WORLDS_DIR.is_dir():
+        for path in sorted(WORLDS_DIR.iterdir()):
+            if not path.is_dir():
+                continue
+            desc = read_json_file(path / "WorldDescription.json") or {}
+            world_desc = desc.get("WorldDescription", {}) if isinstance(desc, dict) else {}
+            worlds.append({
+                "id": path.name,
+                "size": directory_size(path),
+                "mtime": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                "preset": world_desc.get("WorldPresetType", "unknown"),
+                "name": world_desc.get("WorldName", ""),
+            })
+    return worlds
+
+
+def directory_size(path):
+    total = 0
+    for item in path.rglob("*"):
+        try:
+            if item.is_file():
+                total += item.stat().st_size
+        except OSError:
+            continue
+    if total >= 1024 * 1024:
+        return f"{total / 1024 / 1024:.1f} MB"
+    return f"{total / 1024:.0f} KB"
+
+
+def create_new_world():
+    safety = create_spot_backup("pre-new-world")
+    if not safety["ok"]:
+        return safety
+
+    stopped = run_command(["bash", str(SCRIPT), "stop"], timeout=180)
+    if not stopped["ok"]:
+        return stopped
+
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    archive_root = BACKUP_DIR / "archived-worlds" / timestamp
+    archive_root.mkdir(parents=True, exist_ok=True)
+
+    moved = []
+    if WORLDS_DIR.is_dir():
+        for path in sorted(WORLDS_DIR.iterdir()):
+            if path.is_dir():
+                shutil.move(str(path), str(archive_root / path.name))
+                moved.append(path.name)
+
+    data = load_server_description()
+    desc = data["ServerDescription_Persistent"]
+    desc["WorldIslandId"] = ""
+    save_server_description(data)
+    write_env_file(ENV_FILE, {"GENERATE_SETTINGS": "false"})
+
+    started = run_command(["bash", str(SCRIPT), "start"], timeout=900)
+    if not started["ok"]:
+        return {
+            "ok": False,
+            "code": started["code"],
+            "stdout": f"Archived worlds to {archive_root}. Server start failed.",
+            "stderr": started["stderr"] or started["stdout"],
+        }
+
+    return {
+        "ok": True,
+        "code": 0,
+        "stdout": f"Archived {len(moved)} world folder(s) to {archive_root} and started the server. Check logs for the newly generated world ID.",
+        "stderr": "",
     }
 
 
@@ -687,6 +949,9 @@ def index():
         version=version_summary(),
         backups=backup_summary(),
         monitor=monitor_summary(),
+        worlds=world_summary(),
+        world_settings=read_world_settings(),
+        env=read_env_file(ENV_FILE),
         logs=docker_logs(),
         checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
@@ -707,6 +972,7 @@ def action(action):
     special_actions = {
         "spot-backup": create_spot_backup,
         "spot-restore": restore_latest_backup,
+        "new-world": create_new_world,
     }
 
     if action in special_actions:
@@ -727,6 +993,19 @@ def action(action):
     return redirect(url_for("index"))
 
 
+@app.post("/settings")
+@require_login
+def settings():
+    try:
+        result = update_server_settings(request.form)
+    except Exception as exc:
+        flash(f"Settings update failed: {exc}", "bad")
+        return redirect(url_for("index", tab="setup"))
+
+    flash(result["stdout"], "good")
+    return redirect(url_for("index", tab="setup"))
+
+
 @app.get("/api/status")
 @require_login
 def api_status():
@@ -737,6 +1016,8 @@ def api_status():
         "version": version_summary(),
         "backups": backup_summary(),
         "monitor": monitor_summary(),
+        "worlds": world_summary(),
+        "world_settings": read_world_settings(),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     return app.response_class(json.dumps(body, indent=2), mimetype="application/json")
