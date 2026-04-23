@@ -62,6 +62,10 @@ from pathlib import Path
 log = Path('/home/windrose/server-files/R5/Saved/Logs/R5.log')
 max_bytes = 4 * 1024 * 1024
 ready_re = re.compile(r"ServerAccount\. AccountName '([^']+)'\. AccountId ([A-F0-9]+)\.")
+account_line_re = re.compile(
+    r"Name '([^']+)'\. AccountId '([A-F0-9]+)'\. State '([^']+)'.*?"
+    r"TimeInGame ([+0-9:.]+).*?TimeOnServer ([+0-9:.]+).*?FarewellReason\s*(.*)$"
+)
 disconnect_re = re.compile(r"(?:Account disconnected\. AccountId|Disconnect AccountId) ([A-F0-9]+)")
 players = {}
 
@@ -81,6 +85,14 @@ for line in text.splitlines():
     if ready:
         name, account_id = ready.groups()
         players[account_id] = name
+
+    account_line = account_line_re.search(line)
+    if account_line:
+        name, account_id, state_name, _time_in_game, _time_on_server, farewell = account_line.groups()
+        if state_name == 'ReadyToPlay' and not farewell.strip():
+            players[account_id] = name
+        else:
+            players.pop(account_id, None)
 
     disconnect = disconnect_re.search(line)
     if disconnect:
