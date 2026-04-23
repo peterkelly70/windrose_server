@@ -235,6 +235,71 @@
       .flash { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); }
       .flash.good { border: 1px solid var(--good); }
       .flash.bad { border: 1px solid var(--bad); }
+      .report-wrap { padding: 14px; }
+      .report-intro { padding: 14px 14px 0; }
+      #cw-feedback .cw-embed-form {
+        font-family: inherit;
+        color: var(--text);
+        background: rgba(16, 18, 18, 0.56);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: none;
+        letter-spacing: 0;
+      }
+      #cw-feedback .cw-embed-form h3 {
+        color: var(--text);
+        margin: 0 0 0.5rem 0;
+        font-size: 24px;
+        letter-spacing: 0;
+        text-transform: none;
+      }
+      #cw-feedback .cw-embed-form p,
+      #cw-feedback .cw-field label,
+      #cw-feedback .cw-message { color: var(--muted); }
+      #cw-feedback .cw-field label {
+        margin-bottom: 6px;
+        font-size: 13px;
+      }
+      #cw-feedback .cw-field input,
+      #cw-feedback .cw-field select,
+      #cw-feedback .cw-field textarea {
+        background: rgba(16, 18, 18, 0.72);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 11px;
+        font-family: inherit;
+        letter-spacing: 0;
+      }
+      #cw-feedback .cw-field input::placeholder,
+      #cw-feedback .cw-field textarea::placeholder { color: rgba(199, 209, 200, 0.75); }
+      #cw-feedback .cw-field input:focus,
+      #cw-feedback .cw-field select:focus,
+      #cw-feedback .cw-field textarea:focus {
+        outline: 2px solid rgba(224, 184, 76, 0.45);
+        border-color: rgba(224, 184, 76, 0.45);
+        box-shadow: none;
+      }
+      #cw-feedback .cw-field input[type="checkbox"],
+      #cw-feedback .cw-field input[type="radio"] { accent-color: var(--button); }
+      #cw-feedback .cw-field .cw-error {
+        color: var(--bad);
+        margin-top: 6px;
+      }
+      #cw-feedback .cw-embed-form button[type="submit"] {
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: white;
+        background: var(--button);
+        font-weight: 650;
+        cursor: pointer;
+        box-shadow: none;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      #cw-feedback .cw-embed-form button[type="submit"]:hover { filter: brightness(1.08); }
       @media (max-width: 820px) {
         header { display: block; }
         .top-actions { margin-top: 14px; }
@@ -283,6 +348,7 @@
         <button type="button" data-tab="monitor">Monitor</button>
         <button type="button" data-tab="players">Players</button>
         <button type="button" data-tab="logs">Logs</button>
+        <button type="button" data-tab="report">Report Bug</button>
       </nav>
       <div class="small">Active tab refresh: <span id="refresh-state">waiting</span></div>
 
@@ -542,14 +608,37 @@
           <pre id="logs-text">{{ logs }}</pre>
         </section>
       </div>
+
+      <div id="report" class="tab-panel">
+        <section>
+          <h2>Bug Report</h2>
+          <div class="report-intro">
+            <p>Use this form to report gameplay bugs, inventory issues, mining failures, desync, and server stability problems.</p>
+          </div>
+          <div class="report-wrap">
+            <div id="cw-feedback"></div>
+          </div>
+        </section>
+      </div>
       <script>
         const tabs = Array.from(document.querySelectorAll(".tabs button"));
         const panels = Array.from(document.querySelectorAll(".tab-panel"));
+        let reportLoaded = false;
         function showTab(name) {
           tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
           panels.forEach((panel) => panel.classList.toggle("active", panel.id === name));
           localStorage.setItem("windrose-panel-tab", name);
           if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+          if (name === "report") loadBugReport();
+        }
+        function loadBugReport() {
+          if (reportLoaded) return;
+          reportLoaded = true;
+          const script = document.createElement("script");
+          script.src = "https://feedback.computer-wizard.com.au/embed.js";
+          script.dataset.form = "wr-server-bug-report";
+          script.dataset.apiKey = "698b2a3cdd7c89d3d60fb800313127af";
+          document.body.appendChild(script);
         }
         function setText(name, value) {
           document.querySelectorAll(`[data-field="${name}"]`).forEach((node) => { node.textContent = value; });
