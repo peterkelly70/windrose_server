@@ -2,6 +2,7 @@
 .env
 .env.*
 panel/.env
+panel/.panel_secret
 server_scripts/.discord_webhook
 
 # Live game/server data

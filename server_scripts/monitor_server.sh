@@ -12,6 +12,7 @@ REMINDER_FILE="$ROOT/server_scripts/.broken_queue_last_reminder"
 READY_SESSION_FILE="$ROOT/server_scripts/.last_ready_session"
 PLAYER_STATE_FILE="$ROOT/server_scripts/.last_player_state"
 PERF_STATE_FILE="$ROOT/server_scripts/.last_perf_alert"
+HICCUP_LOG="$ROOT/server_scripts/hiccups.log"
 LOCK_FILE="$ROOT/server_scripts/.monitor_server.lock"
 DISK_THRESHOLD="${DISK_THRESHOLD:-95}"
 BROKEN_QUEUE_THRESHOLD="${BROKEN_QUEUE_THRESHOLD:-100}"
@@ -263,6 +264,26 @@ maybe_notify_performance() {
   fi
 
   printf '%s %s\n' "$now" "$key" > "$PERF_STATE_FILE"
+  jq -cn \
+    --arg time "$(date -Is)" \
+    --arg key "$key" \
+    --arg latest "$latest" \
+    --argjson db_slow "$db_slow" \
+    --argjson db_extreme "$db_extreme" \
+    --argjson p2p_delays "$p2p_delays" \
+    --argjson max_p2p_delay_ms "$max_p2p" \
+    --argjson players "$(online_count)" \
+    '{
+      time: $time,
+      type: "performance",
+      key: $key,
+      db_slow: $db_slow,
+      db_extreme: $db_extreme,
+      p2p_delays: $p2p_delays,
+      max_p2p_delay_ms: $max_p2p_delay_ms,
+      players: $players,
+      latest: $latest
+    }' >> "$HICCUP_LOG" 2>/dev/null || true
   pid="$(windrose_pid || true)"
   message="Performance hiccup detected in the last ${DB_SLOW_WINDOW}s.\n\nDB slow commits: $db_slow\nDB extreme commits: $db_extreme\nP2P delay lines over ${P2P_DELAY_THRESHOLD_MS}ms: $p2p_delays\nMax P2P delay: ${max_p2p}ms\nPlayers online: $(online_count)\nPlayers: $(online_names)\n\n$(process_snapshot "$pid")\n$(disk_snapshot)\n\nLatest matching log line:\n$latest"
   notify "Server Performance Hiccup" "$message" "YELLOW"

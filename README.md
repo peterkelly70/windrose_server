@@ -83,7 +83,7 @@ The stop command disables monitor alerts until the server is started again.
 
 ## Web Panel
 
-The panel runs with Gunicorn through `windrose-panel.service` and listens on port `8091` by default.
+The panel runs with Gunicorn through `windrose-panel.service` and listens on port `8091` by default. It is independent from the game container: stopping, restarting, or updating the game server should not restart the web panel.
 
 Useful systemd commands:
 
@@ -98,10 +98,13 @@ Panel endpoints:
 - `/` - main server panel.
 - `/api/status` - status JSON.
 - `/api/monitor` - process, disk, DB lag, and P2P delay JSON.
+- `/api/logs` - recent Docker logs as text.
 - `/download/world-migration` - zip current world files plus install scripts.
 - `/livemap` - public live map, if WindrosePlus data exists.
 
-The panel has tabs for Overview, Setup, Monitor, Players, and Logs.
+The panel has tabs for Overview, Setup, Monitor, Players, and Logs. Only Overview, Monitor, Players, and Logs refresh live data in the background. Setup stays still so forms do not get overwritten while editing.
+
+The Setup tab includes a Bootstrap Install action. It installs Docker, the compose plugin, sysstat, the panel Python environment, systemd services, and pulls the Windrose image. It does not start or restart the game server. For the button to work from the web panel, the `windrose` user must be allowed to run `/home/windrose/server_scripts/bootstrap_install.sh` with passwordless sudo.
 
 The Setup tab can update:
 
@@ -140,7 +143,7 @@ The monitor watches:
 - Windrose process CPU, memory, and IO
 - disk usage and disk IO
 
-It does not restart for performance hiccups. It only sends alerts. The broken backend queue handler waits for players to leave before restarting.
+DB/P2P hiccups are appended to `/home/windrose/server_scripts/hiccups.log` and displayed under Monitor performance. The monitor does not restart for performance hiccups. It only sends alerts. The broken backend queue handler waits for players to leave before restarting.
 
 ## Backups
 

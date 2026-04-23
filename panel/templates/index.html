@@ -3,7 +3,6 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="30">
     <title>Wayward Winds Server</title>
     <style>
       :root {
@@ -262,7 +261,7 @@
           <img src="{{ url_for('static', filename='images/pirate-ship.svg') }}" alt="">
           <div>
             <h1>{{ config.server_name or "Windrose Server" }}</h1>
-            <p>Checked {{ checked_at }}. Page refreshes every 30 seconds.</p>
+            <p>Checked <span data-field="checked_at">{{ checked_at }}</span>. Active tabs refresh in the background.</p>
           </div>
         </div>
         <div class="top-actions">
@@ -285,19 +284,20 @@
         <button type="button" data-tab="players">Players</button>
         <button type="button" data-tab="logs">Logs</button>
       </nav>
+      <div class="small">Active tab refresh: <span id="refresh-state">waiting</span></div>
 
       <div id="overview" class="tab-panel">
         <div class="deck">
           <div class="grid">
             <div class="tile">
               <div class="label">Players Online</div>
-              <div class="value {{ 'good' if game.online_count else 'warn' }}">{{ game.online_count }} / {{ config.max_players }}</div>
-              <div class="small">{{ game.last_server_state }}</div>
+              <div class="value {{ 'good' if game.online_count else 'warn' }}"><span data-field="online_count">{{ game.online_count }}</span> / <span data-field="max_players">{{ config.max_players }}</span></div>
+              <div class="small" data-field="last_server_state">{{ game.last_server_state }}</div>
             </div>
             <div class="tile">
               <div class="label">Container</div>
-              <div class="value {{ 'good' if status.container == 'running' else 'bad' }}">{{ status.container }}</div>
-              <div class="small">{{ status.health }}</div>
+              <div class="value {{ 'good' if status.container == 'running' else 'bad' }}" data-field="container">{{ status.container }}</div>
+              <div class="small" data-field="health">{{ status.health }}</div>
             </div>
             <div class="tile">
               <div class="label">Invite Code</div>
@@ -314,7 +314,7 @@
             </div>
             <div class="tile">
               <div class="label">Backend Session</div>
-              <div class="value">{{ game.last_session or 'unknown' }}</div>
+              <div class="value" data-field="last_session">{{ game.last_session or 'unknown' }}</div>
             </div>
             <div class="tile">
               <div class="label">Game Version</div>
@@ -333,7 +333,7 @@
             </div>
             <div class="tile">
               <div class="label">Last Log</div>
-              <div class="value">{{ game.last_log_time or 'unknown' }}</div>
+              <div class="value" data-field="last_log_time">{{ game.last_log_time or 'unknown' }}</div>
               <div class="small">Started {{ status.started_at }}</div>
             </div>
           </div>
@@ -357,6 +357,31 @@
       </div>
 
       <div id="setup" class="tab-panel">
+        <section>
+          <h2>Installation</h2>
+          <div class="monitor-grid">
+            <div class="monitor-card">
+              <h3>Runtime</h3>
+              <div class="metric-row"><span>Docker</span><span>{{ install.docker or 'missing' }}</span></div>
+              <div class="metric-row"><span>Compose</span><span>{{ install.compose or 'missing' }}</span></div>
+              <div class="metric-row"><span>Server files</span><span>{{ 'present' if install.server_files else 'missing' }}</span></div>
+              <div class="metric-row"><span>Steam manifest</span><span>{{ 'present' if install.steam_manifest else 'missing' }}</span></div>
+            </div>
+            <div class="monitor-card">
+              <h3>Services</h3>
+              <div class="metric-row"><span>Panel</span><span>{{ install.panel_service or 'unknown' }}</span></div>
+              <div class="metric-row"><span>Monitor timer</span><span>{{ install.monitor_timer or 'unknown' }}</span></div>
+              <div class="metric-row"><span>Bootstrap</span><span>{{ install.bootstrap_script }}</span></div>
+            </div>
+          </div>
+          <div class="empty">Bootstrap installs Docker, the compose plugin, sysstat, the panel Python environment, systemd services, and pulls the Windrose image. It does not start or restart the game server.</div>
+          <div class="actions" style="padding: 0 14px 14px;">
+            <form method="post" action="{{ url_for('install_bootstrap') }}" onsubmit="return confirm('Run bootstrap install now? This may install OS packages and restart only the panel service.')">
+              <button class="update">Run Bootstrap Install</button>
+            </form>
+          </div>
+        </section>
+
         <section>
           <h2>Setup</h2>
           <form method="post" action="{{ url_for('settings') }}">
@@ -426,25 +451,28 @@
         <div class="monitor-grid">
           <div class="monitor-card">
             <h3 class="{{ monitor.performance.status }}">Performance</h3>
-            <div class="metric-row"><span>Window</span><span>{{ monitor.performance.window_seconds }}s</span></div>
-            <div class="metric-row"><span>DB slow commits</span><span class="{{ 'bad' if monitor.performance.db_slow >= 20 else 'warn' if monitor.performance.db_slow >= 5 else 'good' }}">{{ monitor.performance.db_slow }}</span></div>
-            <div class="metric-row"><span>DB extreme commits</span><span class="{{ 'bad' if monitor.performance.db_extreme >= 3 else 'warn' if monitor.performance.db_extreme else 'good' }}">{{ monitor.performance.db_extreme }}</span></div>
-            <div class="metric-row"><span>P2P delay lines</span><span class="{{ 'bad' if monitor.performance.p2p_delay_lines >= 3 else 'warn' if monitor.performance.p2p_delay_lines else 'good' }}">{{ monitor.performance.p2p_delay_lines }}</span></div>
-            <div class="metric-row"><span>Max P2P delay</span><span>{{ monitor.performance.max_p2p_delay_ms }}ms</span></div>
+            <div class="metric-row"><span>Window</span><span data-field="monitor_window">{{ monitor.performance.window_seconds }}s</span></div>
+            <div class="metric-row"><span>DB slow commits</span><span data-field="db_slow" class="{{ 'bad' if monitor.performance.db_slow >= 20 else 'warn' if monitor.performance.db_slow >= 5 else 'good' }}">{{ monitor.performance.db_slow }}</span></div>
+            <div class="metric-row"><span>DB extreme commits</span><span data-field="db_extreme" class="{{ 'bad' if monitor.performance.db_extreme >= 3 else 'warn' if monitor.performance.db_extreme else 'good' }}">{{ monitor.performance.db_extreme }}</span></div>
+            <div class="metric-row"><span>P2P delay lines</span><span data-field="p2p_delay_lines" class="{{ 'bad' if monitor.performance.p2p_delay_lines >= 3 else 'warn' if monitor.performance.p2p_delay_lines else 'good' }}">{{ monitor.performance.p2p_delay_lines }}</span></div>
+            <div class="metric-row"><span>Max P2P delay</span><span data-field="max_p2p_delay">{{ monitor.performance.max_p2p_delay_ms }}ms</span></div>
           </div>
           <div class="monitor-card">
             <h3>Process</h3>
-            <div class="metric-row"><span>PID</span><span>{{ monitor.process.pid or 'none' }}</span></div>
-            <div class="metric-row"><span>Running</span><span class="{{ 'good' if monitor.process.running else 'bad' }}">{{ 'yes' if monitor.process.running else 'no' }}</span></div>
-            <div class="metric-row"><span>Snapshot</span><span>{{ monitor.process.summary }}</span></div>
-            <div class="metric-row"><span>IO</span><span>{{ monitor.process.io or 'no sample' }}</span></div>
+            <div class="metric-row"><span>PID</span><span data-field="process_pid">{{ monitor.process.pid or 'none' }}</span></div>
+            <div class="metric-row"><span>Running</span><span data-field="process_running" class="{{ 'good' if monitor.process.running else 'bad' }}">{{ 'yes' if monitor.process.running else 'no' }}</span></div>
+            <div class="metric-row"><span>Snapshot</span><span data-field="process_summary">{{ monitor.process.summary }}</span></div>
+            <div class="metric-row"><span>IO</span><span data-field="process_io">{{ monitor.process.io or 'no sample' }}</span></div>
           </div>
           <div class="monitor-card">
             <h3>Disk</h3>
-            <div class="metric-row"><span>Space</span><span>{{ monitor.disk.usage }}</span></div>
-            <div class="metric-row"><span>IO</span><span>{{ monitor.disk.device_io or 'no sample' }}</span></div>
+            <div class="metric-row"><span>Space</span><span data-field="disk_usage">{{ monitor.disk.usage }}</span></div>
+            <div class="metric-row"><span>IO</span><span data-field="disk_io">{{ monitor.disk.device_io or 'no sample' }}</span></div>
           </div>
         </div>
+        <h2>Hiccup History</h2>
+        <pre id="hiccup-log">{% for item in monitor.hiccups %}{{ item.time }} {{ item.key or item.type }} db={{ item.db_slow or 0 }}/{{ item.db_extreme or 0 }} p2p={{ item.p2p_delays or 0 }} max={{ item.max_p2p_delay_ms or 0 }}ms players={{ item.players or 0 }}
+{% endfor %}</pre>
         {% if monitor.performance.latest_lines %}
           <pre>{% for item in monitor.performance.latest_lines %}{{ item }}
 {% endfor %}</pre>
@@ -456,7 +484,7 @@
       <section id="players" class="tab-panel">
         <h2>Players</h2>
         {% if game.players %}
-          <table>
+          <table id="players-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -499,7 +527,7 @@
 
         <section>
           <h2>Recent Logs</h2>
-          <pre>{{ logs }}</pre>
+          <pre id="logs-text">{{ logs }}</pre>
         </section>
       </div>
       <script>
@@ -511,9 +539,108 @@
           localStorage.setItem("windrose-panel-tab", name);
           if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
         }
+        function setText(name, value) {
+          document.querySelectorAll(`[data-field="${name}"]`).forEach((node) => { node.textContent = value; });
+        }
+        function classLevel(node, value, warnAt, badAt) {
+          if (!node) return;
+          node.classList.remove("good", "warn", "bad");
+          node.classList.add(value >= badAt ? "bad" : value >= warnAt ? "warn" : "good");
+        }
+        function escapeHtml(value) {
+          return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[char]));
+        }
+        async function fetchJson(url) {
+          const response = await fetch(url, {headers: {"Accept": "application/json"}});
+          if (response.status === 401 || response.redirected) {
+            location.href = "{{ url_for('login') }}";
+            return null;
+          }
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return response.json();
+        }
+        function renderStatus(data) {
+          if (!data) return;
+          setText("checked_at", new Date().toLocaleString());
+          setText("online_count", data.game.online_count);
+          setText("max_players", data.config.max_players);
+          setText("last_server_state", data.game.last_server_state);
+          setText("container", data.status.container);
+          setText("health", data.status.health);
+          setText("last_session", data.game.last_session || "unknown");
+          setText("last_log_time", data.game.last_log_time || "unknown");
+          renderMonitor(data.monitor);
+          renderPlayers(data.game.players || []);
+        }
+        function renderMonitor(monitor) {
+          if (!monitor) return;
+          setText("monitor_window", `${monitor.performance.window_seconds}s`);
+          setText("db_slow", monitor.performance.db_slow);
+          setText("db_extreme", monitor.performance.db_extreme);
+          setText("p2p_delay_lines", monitor.performance.p2p_delay_lines);
+          setText("max_p2p_delay", `${monitor.performance.max_p2p_delay_ms}ms`);
+          setText("process_pid", monitor.process.pid || "none");
+          setText("process_running", monitor.process.running ? "yes" : "no");
+          setText("process_summary", monitor.process.summary || "unknown");
+          setText("process_io", monitor.process.io || "no sample");
+          setText("disk_usage", monitor.disk.usage || "unknown");
+          setText("disk_io", monitor.disk.device_io || "no sample");
+          classLevel(document.querySelector('[data-field="db_slow"]'), monitor.performance.db_slow, 5, 20);
+          classLevel(document.querySelector('[data-field="db_extreme"]'), monitor.performance.db_extreme, 1, 3);
+          classLevel(document.querySelector('[data-field="p2p_delay_lines"]'), monitor.performance.p2p_delay_lines, 1, 3);
+          const hiccups = document.getElementById("hiccup-log");
+          if (hiccups) {
+            hiccups.textContent = (monitor.hiccups || []).map((item) =>
+              `${item.time || ""} ${item.key || item.type || ""} db=${item.db_slow || 0}/${item.db_extreme || 0} p2p=${item.p2p_delays || 0} max=${item.max_p2p_delay_ms || 0}ms players=${item.players || 0}`
+            ).join("\n") || "No hiccups recorded.";
+          }
+        }
+        function renderPlayers(players) {
+          const table = document.querySelector("#players-table tbody");
+          if (!table) return;
+          table.innerHTML = players.map((player) => `
+            <tr>
+              <td data-label="Name">${escapeHtml(player.name)}</td>
+              <td data-label="State" class="good">${escapeHtml(player.state)}</td>
+              <td data-label="Time In Game">${escapeHtml(player.time_in_game || "-")}</td>
+              <td data-label="Time On Server">${escapeHtml(player.time_on_server || "-")}</td>
+              <td data-label="Account ID">${escapeHtml(player.account_id)}</td>
+            </tr>
+          `).join("");
+        }
+        async function refreshActiveTab() {
+          const active = document.querySelector(".tabs button.active")?.dataset.tab || "overview";
+          if (!["overview", "monitor", "players", "logs"].includes(active)) {
+            document.getElementById("refresh-state").textContent = `paused on ${active}`;
+            return;
+          }
+          try {
+            if (active === "logs") {
+              const response = await fetch("{{ url_for('api_logs') }}");
+              if (response.redirected || response.status === 401) {
+                location.href = "{{ url_for('login') }}";
+                return;
+              }
+              document.getElementById("logs-text").textContent = await response.text();
+            } else {
+              renderStatus(await fetchJson("{{ url_for('api_status') }}"));
+            }
+            document.getElementById("refresh-state").textContent = `updated ${new Date().toLocaleTimeString()}`;
+          } catch (error) {
+            document.getElementById("refresh-state").textContent = `refresh failed: ${error.message}`;
+          }
+        }
         const initial = new URLSearchParams(location.search).get("tab") || location.hash.slice(1) || localStorage.getItem("windrose-panel-tab") || "overview";
         tabs.forEach((tab) => tab.addEventListener("click", () => showTab(tab.dataset.tab)));
         showTab(tabs.some((tab) => tab.dataset.tab === initial) ? initial : "overview");
+        setInterval(refreshActiveTab, 15000);
+        refreshActiveTab();
         const baseline = document.getElementById("baseline-settings");
         if (baseline) {
           baseline.addEventListener("click", () => {

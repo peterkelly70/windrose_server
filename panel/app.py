@@ -26,6 +26,9 @@ SERVER_FILES = ROOT / "server-files"
 SERVER_JSON = SERVER_FILES / "R5" / "ServerDescription.json"
 ENV_FILE = ROOT / ".env"
 GAME_LOG = SERVER_FILES / "R5" / "Saved" / "Logs" / "R5.log"
+PANEL_SECRET_FILE = ROOT / "panel" / ".panel_secret"
+HICCUP_LOG = ROOT / "server_scripts" / "hiccups.log"
+BOOTSTRAP_SCRIPT = ROOT / "server_scripts" / "bootstrap_install.sh"
 STEAM_MANIFEST = SERVER_FILES / "steamapps" / "appmanifest_4129620.acf"
 BACKUP_DIR = ROOT / "backups"
 COMPOSE_DIR = ROOT
@@ -50,7 +53,24 @@ LOG_LINES = int(os.environ.get("WINDROSE_PANEL_LOG_LINES", "180"))
 GAME_LOG_BYTES = int(os.environ.get("WINDROSE_PANEL_GAME_LOG_BYTES", str(4 * 1024 * 1024)))
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("WINDROSE_PANEL_SECRET") or secrets.token_hex(32)
+
+
+def panel_secret():
+    configured = os.environ.get("WINDROSE_PANEL_SECRET")
+    if configured:
+        return configured
+    try:
+        if PANEL_SECRET_FILE.is_file():
+            return PANEL_SECRET_FILE.read_text().strip()
+        secret = secrets.token_hex(32)
+        PANEL_SECRET_FILE.write_text(secret + "\n")
+        PANEL_SECRET_FILE.chmod(0o600)
+        return secret
+    except OSError:
+        return secrets.token_hex(32)
+
+
+app.secret_key = panel_secret()
 
 
 TIMESTAMP_RE = re.compile(r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}:\d{3})\]")
@@ -511,6 +531,15 @@ def version_summary():
 
 
 def docker_status():
+    if not shutil.which("docker"):
+        return {
+            "container": "docker-missing",
+            "health": "unknown",
+            "started_at": "",
+            "restart_policy": "",
+            "ps": "Docker is not installed or not in PATH.",
+        }
+
     inspect = run_command(
         [
             "docker",
@@ -543,6 +572,8 @@ def docker_status():
 
 
 def docker_logs():
+    if not shutil.which("docker"):
+        return "Docker is not installed or not in PATH."
     result = docker_compose("logs", "--tail", str(LOG_LINES), "windrose", timeout=15)
     return result["stdout"] or result["stderr"]
 
@@ -760,13 +791,48 @@ def log_performance_summary(window_seconds=300):
     }
 
 
+def hiccup_history(limit=80):
+    if not HICCUP_LOG.is_file():
+        return []
+    try:
+        lines = HICCUP_LOG.read_text(errors="replace").splitlines()
+    except OSError:
+        return []
+    items = []
+    for line in lines[-limit:]:
+        try:
+            items.append(json.loads(line))
+        except json.JSONDecodeError:
+            items.append({"time": "", "type": "raw", "message": line})
+    return items
+
+
 def monitor_summary():
     pid = windrose_pid()
     return {
         "process": process_monitor(pid),
         "disk": disk_monitor(),
         "performance": log_performance_summary(),
+        "hiccups": hiccup_history(),
     }
+
+
+def install_status():
+    return {
+        "docker": shutil.which("docker") or "",
+        "compose": run_command_ok(["docker", "compose", "version"], timeout=5)["stdout"] if shutil.which("docker") else "",
+        "server_files": SERVER_FILES.is_dir(),
+        "steam_manifest": STEAM_MANIFEST.is_file(),
+        "panel_service": run_command_ok(["systemctl", "is-enabled", "windrose-panel.service"], timeout=5)["stdout"],
+        "monitor_timer": run_command_ok(["systemctl", "is-enabled", "windrose-monitor.timer"], timeout=5)["stdout"],
+        "bootstrap_script": str(BOOTSTRAP_SCRIPT),
+    }
+
+
+def run_bootstrap():
+    if not BOOTSTRAP_SCRIPT.is_file():
+        return {"ok": False, "code": 1, "stdout": "", "stderr": f"Missing {BOOTSTRAP_SCRIPT}"}
+    return run_command(["sudo", "-n", str(BOOTSTRAP_SCRIPT)], timeout=1800)
 
 
 def migration_install_sh():
@@ -952,6 +1018,7 @@ def index():
         worlds=world_summary(),
         world_settings=read_world_settings(),
         env=read_env_file(ENV_FILE),
+        install=install_status(),
         logs=docker_logs(),
         checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
@@ -1018,9 +1085,18 @@ def api_status():
         "monitor": monitor_summary(),
         "worlds": world_summary(),
         "world_settings": read_world_settings(),
+        "install": install_status(),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     return app.response_class(json.dumps(body, indent=2), mimetype="application/json")
+
+
+@app.post("/install/bootstrap")
+@require_login
+def install_bootstrap():
+    run_background("bootstrap-install", run_bootstrap)
+    flash("Bootstrap install started. Check Setup for status and panel logs for progress.", "good")
+    return redirect(url_for("index", tab="setup"))
 
 
 @app.get("/api/monitor")
