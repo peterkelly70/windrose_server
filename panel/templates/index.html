@@ -450,6 +450,7 @@
               <h3>Services</h3>
               <div class="metric-row"><span>Panel</span><span>{{ install.panel_service or 'unknown' }}</span></div>
               <div class="metric-row"><span>Monitor timer</span><span>{{ install.monitor_timer or 'unknown' }}</span></div>
+              <div class="metric-row"><span>World schedule timer</span><span>{{ install.world_scheduler_timer or 'unknown' }}</span></div>
               <div class="metric-row"><span>Bootstrap</span><span>{{ install.bootstrap_script }}</span></div>
             </div>
           </div>
@@ -511,23 +512,131 @@
 
         <section>
           <h2>Worlds</h2>
+          <div class="empty">Current active world: {{ current_world.name or current_world.id or 'none selected' }}{% if current_world.id %} ({{ current_world.id }}){% endif %}.</div>
           {% if worlds %}
             <table>
-              <thead><tr><th>World ID</th><th>Name</th><th>Preset</th><th>Size</th><th>Modified</th></tr></thead>
+              <thead><tr><th>Active</th><th>World ID</th><th>Name</th><th>Preset</th><th>Size</th><th>Modified</th><th>Action</th></tr></thead>
               <tbody>
                 {% for world in worlds %}
                   <tr>
+                    <td data-label="Active">{{ 'yes' if world.active else '' }}</td>
                     <td data-label="World ID">{{ world.id }}</td>
                     <td data-label="Name">{{ world.name or '-' }}</td>
                     <td data-label="Preset">{{ world.preset }}</td>
                     <td data-label="Size">{{ world.size }}</td>
                     <td data-label="Modified">{{ world.mtime }}</td>
+                    <td data-label="Action">
+                      {% if not world.active %}
+                        <form method="post" action="{{ url_for('worlds_switch') }}" onsubmit="return confirm('Switch to this world now? The game server will restart if it is currently running.')">
+                          <input type="hidden" name="world_id" value="{{ world.id }}">
+                          <button class="backup">Switch</button>
+                        </form>
+                      {% else %}
+                        Active
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
             </table>
           {% else %}
             <div class="empty">No world folders found.</div>
+          {% endif %}
+          <h2>World Schedule</h2>
+          {% if world_schedule.error %}
+            <div class="empty">{{ world_schedule.error }}</div>
+          {% else %}
+            <form method="post" action="{{ url_for('worlds_schedule') }}">
+              <div class="form-grid">
+                <div class="check-field">
+                  <input id="schedule_enabled" name="schedule_enabled" type="checkbox" {% if world_schedule.enabled %}checked{% endif %}>
+                  <label for="schedule_enabled">Enable world schedule</label>
+                </div>
+                <div class="field">
+                  <label for="default_world_id">Default World</label>
+                  <select id="default_world_id" name="default_world_id">
+                    <option value="">Keep current server world</option>
+                    {% for world in worlds %}
+                      <option value="{{ world.id }}" {% if world.id == world_schedule.default_world_id %}selected{% endif %}>{{ world.name or world.id }} ({{ world.id }})</option>
+                    {% endfor %}
+                  </select>
+                  <div class="small">Used whenever no schedule window is active.</div>
+                </div>
+              </div>
+              <div class="actions" style="padding: 0 14px 14px;">
+                <button class="update">Save Schedule Settings</button>
+              </div>
+            </form>
+
+            {% if world_schedule.entries %}
+              <table>
+                <thead><tr><th>Name</th><th>World</th><th>Days</th><th>Window</th><th>Enabled</th><th>Action</th></tr></thead>
+                <tbody>
+                  {% for entry in world_schedule.entries %}
+                    <tr>
+                      <td data-label="Name">{{ entry.name }}</td>
+                      <td data-label="World">{{ entry.world_id }}</td>
+                      <td data-label="Days">{{ entry.days|join(', ') }}</td>
+                      <td data-label="Window">{{ entry.start }} - {{ entry.end }}</td>
+                      <td data-label="Enabled">{{ 'yes' if entry.enabled else 'no' }}</td>
+                      <td data-label="Action">
+                        <form method="post" action="{{ url_for('worlds_schedule') }}" onsubmit="return confirm('Delete this schedule entry?')">
+                          <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                          <input type="hidden" name="schedule_delete" value="on">
+                          <button class="stop">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% else %}
+              <div class="empty">No scheduled world windows yet.</div>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('worlds_schedule') }}">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="schedule_name">Window Name</label>
+                  <input id="schedule_name" name="schedule_name" type="text" value="Age World">
+                </div>
+                <div class="field">
+                  <label for="schedule_world_id">Scheduled World</label>
+                  <select id="schedule_world_id" name="schedule_world_id">
+                    {% for world in worlds %}
+                      <option value="{{ world.id }}">{{ world.name or world.id }} ({{ world.id }})</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="schedule_start">Start</label>
+                  <input id="schedule_start" name="schedule_start" type="time" value="19:30">
+                </div>
+                <div class="field">
+                  <label for="schedule_end">End</label>
+                  <input id="schedule_end" name="schedule_end" type="time" value="22:30">
+                </div>
+                <div class="field">
+                  <label>Days</label>
+                  <div>
+                    {% for day, label in world_schedule.weekday_options %}
+                      <div class="check-field" style="padding-top: 0;">
+                        <input id="schedule_day_{{ day }}" name="schedule_day_{{ day }}" type="checkbox" {% if day in ['mon', 'thu'] %}checked{% endif %}>
+                        <label for="schedule_day_{{ day }}">{{ label }}</label>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </div>
+                <div class="check-field">
+                  <input id="schedule_entry_enabled" name="schedule_entry_enabled" type="checkbox" checked>
+                  <label for="schedule_entry_enabled">Entry enabled</label>
+                </div>
+              </div>
+              <input type="hidden" name="entry_id" value="{{ checked_at|replace(' ', '-')|replace(':', '') }}">
+              <div class="actions" style="padding: 0 14px 14px;">
+                <button class="update">Add Schedule Window</button>
+              </div>
+            </form>
           {% endif %}
           <div class="danger-zone">
             <form method="post" action="{{ url_for('action', action='new-world') }}" onsubmit="return confirm('Create a new world now? This will make a backup, stop the server, archive current world folders, clear the active world ID, and start the server. Connected players will be kicked.')">

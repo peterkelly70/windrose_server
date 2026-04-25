@@ -123,6 +123,14 @@ The Setup tab can update:
 
 The Setup tab also lists current world folders and includes a guarded Create New World action. That action makes a spot backup, stops the server, archives current world folders under `/home/windrose/backups/archived-worlds`, clears the active world ID, and starts the server again.
 
+The Worlds section also supports:
+
+- manual switching to another existing world
+- a default world used outside schedule windows
+- scheduled world windows by weekday and time
+
+`windrose-world-scheduler.timer` checks the schedule every minute. If the target world changes, it updates `WorldIslandId` and restarts the game server only when the server is already running. If the server is intentionally stopped, it only updates the configured target world.
+
 ## Monitor
 
 `windrose-monitor.timer` runs the monitor every minute.
@@ -131,6 +139,7 @@ The Setup tab also lists current world folders and includes a guarded Create New
 systemctl list-timers | grep windrose
 sudo systemctl status windrose-monitor.timer
 sudo systemctl status windrose-monitor.service
+sudo systemctl status windrose-world-scheduler.timer
 ```
 
 The monitor watches:

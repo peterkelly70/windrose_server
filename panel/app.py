@@ -38,6 +38,7 @@ COMPOSE_DIR = ROOT
 WINDROSE_PLUS_DATA = ROOT / "windrose_plus_data"
 PUBLIC_LIVEMAP = ROOT / "panel" / "static" / "windroseplus" / "livemap" / "index.html"
 WORLDS_DIR = SERVER_FILES / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
+WORLD_SCHEDULE_FILE = ROOT / "data" / "world_schedule.json"
 MIGRATION_WORLD_TARGET = Path("server-files") / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 BROCCOLI_WORLD_TARGET = Path("server-files") / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 WORLD_SETTING_LABELS = {
@@ -49,6 +50,15 @@ WORLD_SETTING_LABELS = {
     "WDS.Parameter.Coop.StatsCorrectionModifier": "Player Stat Scaling",
     "WDS.Parameter.Coop.ShipStatsCorrectionModifier": "Ship Stat Scaling",
 }
+WEEKDAY_OPTIONS = [
+    ("mon", "Monday"),
+    ("tue", "Tuesday"),
+    ("wed", "Wednesday"),
+    ("thu", "Thursday"),
+    ("fri", "Friday"),
+    ("sat", "Saturday"),
+    ("sun", "Sunday"),
+]
 
 APP_USER = os.environ.get("WINDROSE_PANEL_USER", "")
 APP_PASSWORD = os.environ.get("WINDROSE_PANEL_PASSWORD", "")
@@ -421,6 +431,176 @@ def save_server_description(data):
     tmp.replace(SERVER_JSON)
 
 
+def world_exists(world_id):
+    return bool(world_id) and (WORLDS_DIR / world_id).is_dir()
+
+
+def default_world_schedule():
+    return {"enabled": False, "default_world_id": "", "entries": []}
+
+
+def normalize_schedule_entry(entry):
+    days = [day for day, _label in WEEKDAY_OPTIONS if day in (entry.get("days") or [])]
+    start = str(entry.get("start", "")).strip()
+    end = str(entry.get("end", "")).strip()
+    return {
+        "id": str(entry.get("id", "")).strip(),
+        "name": str(entry.get("name", "")).strip(),
+        "world_id": str(entry.get("world_id", "")).strip(),
+        "days": days,
+        "start": start,
+        "end": end,
+        "enabled": bool(entry.get("enabled", True)),
+    }
+
+
+def read_world_schedule():
+    data = default_world_schedule()
+    try:
+        raw = json.loads(WORLD_SCHEDULE_FILE.read_text())
+    except OSError:
+        raw = {}
+    except json.JSONDecodeError as exc:
+        return {
+            "enabled": False,
+            "default_world_id": "",
+            "entries": [],
+            "error": f"Unable to parse {WORLD_SCHEDULE_FILE.name}: {exc}",
+            "weekday_options": WEEKDAY_OPTIONS,
+        }
+
+    data["enabled"] = bool(raw.get("enabled", False))
+    data["default_world_id"] = str(raw.get("default_world_id", "")).strip()
+    data["entries"] = [normalize_schedule_entry(item) for item in raw.get("entries", []) if isinstance(item, dict)]
+    data["weekday_options"] = WEEKDAY_OPTIONS
+    data["error"] = ""
+    return data
+
+
+def save_world_schedule(data):
+    WORLD_SCHEDULE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = WORLD_SCHEDULE_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(WORLD_SCHEDULE_FILE)
+
+
+def validate_time_hhmm(value, label):
+    if not re.fullmatch(r"\d{2}:\d{2}", value or ""):
+        raise ValueError(f"{label} must use HH:MM.")
+    hour, minute = map(int, value.split(":", 1))
+    if hour > 23 or minute > 59:
+        raise ValueError(f"{label} must use a valid 24-hour time.")
+
+
+def current_world_details():
+    config = read_config()
+    world_id = config.get("world_id", "")
+    world = next((item for item in world_summary() if item["id"] == world_id), None)
+    return {
+        "id": world_id,
+        "name": world["name"] if world else "",
+        "preset": world["preset"] if world else "",
+    }
+
+
+def set_active_world_id(world_id):
+    if world_id and not world_exists(world_id):
+        raise ValueError(f"World not found: {world_id}")
+    data = load_server_description()
+    desc = data["ServerDescription_Persistent"]
+    desc["WorldIslandId"] = world_id
+    save_server_description(data)
+
+
+def switch_world(world_id, reason="manual switch"):
+    if not world_exists(world_id):
+        return {"ok": False, "code": 1, "stdout": "", "stderr": f"World not found: {world_id}"}
+
+    current = read_config().get("world_id", "")
+    if world_id == current:
+        return {"ok": True, "code": 0, "stdout": "World already active.", "stderr": ""}
+
+    status = docker_status()
+    was_running = status.get("container") == "running"
+    set_active_world_id(world_id)
+
+    if not was_running:
+        return {
+            "ok": True,
+            "code": 0,
+            "stdout": f"Active world changed to {world_id}. Server is stopped, so no restart was done.",
+            "stderr": "",
+        }
+
+    stopped = run_command(["bash", str(SCRIPT), "stop"], timeout=180)
+    if not stopped["ok"]:
+        return stopped
+    started = run_command(["bash", str(SCRIPT), "start"], timeout=900)
+    if not started["ok"]:
+        return started
+    return {
+        "ok": True,
+        "code": 0,
+        "stdout": f"Switched active world to {world_id} and restarted the server for {reason}.",
+        "stderr": "",
+    }
+
+
+def update_world_schedule(form):
+    schedule = read_world_schedule()
+    if schedule.get("error"):
+        raise ValueError(schedule["error"])
+
+    if "schedule_enabled" in form or "default_world_id" in form:
+        schedule["enabled"] = form.get("schedule_enabled") == "on"
+        default_world_id = form.get("default_world_id", "").strip()
+        if default_world_id and not world_exists(default_world_id):
+            raise ValueError(f"Default world not found: {default_world_id}")
+        schedule["default_world_id"] = default_world_id
+
+    entry_id = form.get("entry_id", "").strip()
+    if entry_id:
+        remaining = [item for item in schedule["entries"] if item["id"] != entry_id]
+        if form.get("schedule_delete") == "on":
+            schedule["entries"] = remaining
+        else:
+            if not entry_id:
+                entry_id = secrets.token_hex(8)
+            name = form.get("schedule_name", "").strip() or "Scheduled world"
+            world_id = form.get("schedule_world_id", "").strip()
+            start = form.get("schedule_start", "").strip()
+            end = form.get("schedule_end", "").strip()
+            days = [day for day, _label in WEEKDAY_OPTIONS if form.get(f"schedule_day_{day}") == "on"]
+            if not world_exists(world_id):
+                raise ValueError("Scheduled world must exist.")
+            if not days:
+                raise ValueError("Select at least one day for the schedule window.")
+            validate_time_hhmm(start, "Schedule start")
+            validate_time_hhmm(end, "Schedule end")
+            schedule["entries"] = remaining + [{
+                "id": entry_id,
+                "name": name,
+                "world_id": world_id,
+                "days": days,
+                "start": start,
+                "end": end,
+                "enabled": form.get("schedule_entry_enabled") == "on",
+            }]
+
+    schedule["entries"] = sorted(schedule["entries"], key=lambda item: (item["start"], item["name"].lower(), item["id"]))
+    save_world_schedule({
+        "enabled": schedule["enabled"],
+        "default_world_id": schedule["default_world_id"],
+        "entries": schedule["entries"],
+    })
+    return {
+        "ok": True,
+        "code": 0,
+        "stdout": "World schedule saved.",
+        "stderr": "",
+    }
+
+
 def active_world_description_path(world_id=None):
     world_id = world_id or read_config().get("world_id", "")
     if not world_id:
@@ -540,6 +720,7 @@ def update_server_settings(form):
 
 def world_summary():
     worlds = []
+    active_world_id = read_config().get("world_id", "")
     if WORLDS_DIR.is_dir():
         for path in sorted(WORLDS_DIR.iterdir()):
             if not path.is_dir():
@@ -552,6 +733,7 @@ def world_summary():
                 "mtime": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                 "preset": world_desc.get("WorldPresetType", "unknown"),
                 "name": world_desc.get("WorldName", ""),
+                "active": path.name == active_world_id,
             })
     return worlds
 
@@ -749,9 +931,8 @@ def game_summary():
                     "last_seen": stamp,
                 }
                 disconnected.pop(account_id, None)
-            else:
+            elif account_id not in players:
                 disconnected[account_id] = name
-                players.pop(account_id, None)
 
         disconnect = DISCONNECT_RE.search(line)
         if disconnect:
@@ -939,6 +1120,7 @@ def install_status():
         "steam_manifest": STEAM_MANIFEST.is_file(),
         "panel_service": run_command_ok(["systemctl", "is-enabled", "windrose-panel.service"], timeout=5)["stdout"],
         "monitor_timer": run_command_ok(["systemctl", "is-enabled", "windrose-monitor.timer"], timeout=5)["stdout"],
+        "world_scheduler_timer": run_command_ok(["systemctl", "is-enabled", "windrose-world-scheduler.timer"], timeout=5)["stdout"],
         "bootstrap_script": str(BOOTSTRAP_SCRIPT),
     }
 
@@ -1124,12 +1306,14 @@ def index():
     return render_template(
         "index.html",
         config=read_config(),
+        current_world=current_world_details(),
         status=docker_status(),
         game=game_summary(),
         version=version_summary(),
         backups=backup_summary(),
         monitor=monitor_summary(),
         worlds=world_summary(),
+        world_schedule=read_world_schedule(),
         world_settings=read_world_settings(),
         bug_report=bug_report_settings(),
         env=read_env_file(ENV_FILE),
@@ -1189,17 +1373,43 @@ def settings():
     return redirect(url_for("index", tab="setup"))
 
 
+@app.post("/worlds/switch")
+@require_login
+def worlds_switch():
+    world_id = request.form.get("world_id", "").strip()
+    result = switch_world(world_id)
+    if result["ok"]:
+        flash(result["stdout"], "good")
+    else:
+        flash(result["stderr"] or result["stdout"], "bad")
+    return redirect(url_for("index", tab="setup"))
+
+
+@app.post("/worlds/schedule")
+@require_login
+def worlds_schedule():
+    try:
+        result = update_world_schedule(request.form)
+    except Exception as exc:
+        flash(f"Schedule update failed: {exc}", "bad")
+        return redirect(url_for("index", tab="setup"))
+    flash(result["stdout"], "good")
+    return redirect(url_for("index", tab="setup"))
+
+
 @app.get("/api/status")
 @require_login
 def api_status():
     body = {
         "config": read_config(),
+        "current_world": current_world_details(),
         "status": docker_status(),
         "game": game_summary(),
         "version": version_summary(),
         "backups": backup_summary(),
         "monitor": monitor_summary(),
         "worlds": world_summary(),
+        "world_schedule": read_world_schedule(),
         "world_settings": read_world_settings(),
         "bug_report": bug_report_settings(),
         "discord": read_discord_settings(),

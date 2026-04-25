@@ -91,7 +91,7 @@ for line in text.splitlines():
         name, account_id, state_name, _time_in_game, _time_on_server, farewell = account_line.groups()
         if state_name == 'ReadyToPlay' and not farewell.strip():
             players[account_id] = name
-        else:
+        elif account_id not in players:
             players.pop(account_id, None)
 
     disconnect = disconnect_re.search(line)

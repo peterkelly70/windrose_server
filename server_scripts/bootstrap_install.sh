@@ -120,9 +120,40 @@ Persistent=true
 WantedBy=timers.target
 UNIT
 
+cat > /etc/systemd/system/windrose-world-scheduler.service <<'UNIT'
+[Unit]
+Description=Apply scheduled Windrose world rotation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=windrose
+Group=windrose
+SupplementaryGroups=docker
+WorkingDirectory=/home/windrose
+ExecStart=/home/windrose/server_scripts/world_scheduler.py
+TimeoutStartSec=900
+UNIT
+
+cat > /etc/systemd/system/windrose-world-scheduler.timer <<'UNIT'
+[Unit]
+Description=Check Windrose world schedule every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
 systemctl daemon-reload
 systemctl enable --now windrose-panel.service
 systemctl enable --now windrose-monitor.timer
+systemctl enable --now windrose-world-scheduler.timer
 
 docker compose -f "$ROOT/docker-compose.yml" pull windrose
 
