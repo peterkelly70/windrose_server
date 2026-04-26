@@ -5,10 +5,11 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path("/home/windrose")
-SERVER_JSON = ROOT / "server-files" / "R5" / "ServerDescription.json"
+INSTANCE_ROOT = ROOT / "instances" / "wayward-winds"
+SERVER_JSON = INSTANCE_ROOT / "server-files" / "R5" / "ServerDescription.json"
 SCHEDULE_FILE = ROOT / "data" / "world_schedule.json"
 SCRIPT = ROOT / "windrose-server.sh"
-WORLDS_DIR = ROOT / "server-files" / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
+WORLDS_DIR = INSTANCE_ROOT / "server-files" / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 STATE_FILE = ROOT / "server_scripts" / ".last_world_schedule_state"
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 

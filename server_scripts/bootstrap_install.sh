@@ -26,7 +26,9 @@ fi
 
 getent group docker >/dev/null || groupadd docker
 usermod -aG docker windrose || true
-usermod -aG docker peter || true
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ] && [ "${SUDO_USER}" != "windrose" ]; then
+  usermod -aG docker "${SUDO_USER}" || true
+fi
 
 mkdir -p "$ROOT/server-files" "$ROOT/backups" "$ROOT/server_scripts"
 chown -R windrose:windrose "$ROOT/server-files" "$ROOT/backups"
@@ -150,11 +152,42 @@ Persistent=true
 WantedBy=timers.target
 UNIT
 
+cat > /etc/systemd/system/windrose-instance-scheduler.service <<'UNIT'
+[Unit]
+Description=Apply scheduled Windrose instance activation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=windrose
+Group=windrose
+SupplementaryGroups=docker
+WorkingDirectory=/home/windrose
+ExecStart=/home/windrose/server_scripts/instance_scheduler.py
+TimeoutStartSec=900
+UNIT
+
+cat > /etc/systemd/system/windrose-instance-scheduler.timer <<'UNIT'
+[Unit]
+Description=Check Windrose instance schedule every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
 systemctl daemon-reload
 systemctl enable --now windrose-panel.service
 systemctl enable --now windrose-monitor.timer
-systemctl enable --now windrose-world-scheduler.timer
+systemctl enable --now windrose-instance-scheduler.timer
 
 docker compose -f "$ROOT/docker-compose.yml" pull windrose
 
 echo "Bootstrap complete. Review /home/windrose/.env and /home/windrose/panel/.env before starting a public server."
+echo "Legacy world-scheduler units were installed but are not enabled by default. Use the instance scheduler timer for multi-instance scheduling."

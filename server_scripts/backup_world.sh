@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="/home/windrose"
-SERVER_FILES="$ROOT/server-files"
+INSTANCE_ROOT="$ROOT/instances/wayward-winds"
+SERVER_FILES="$INSTANCE_ROOT/server-files"
 SAVE_ROOT="$SERVER_FILES/R5/Saved"
 BACKUP_DIR="$ROOT/backups"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"

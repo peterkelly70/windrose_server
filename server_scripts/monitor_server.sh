@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="/home/windrose"
-SERVER_FILES="$ROOT/server-files"
+INSTANCE_ROOT="$ROOT/instances/wayward-winds"
+SERVER_FILES="$INSTANCE_ROOT/server-files"
 LOG_FILE="$SERVER_FILES/R5/Saved/Logs/R5.log"
 NOTIFY="$ROOT/server_scripts/notify_discord.sh"
 STATE_FILE="$ROOT/server_scripts/.last_monitor_state"
@@ -59,7 +60,7 @@ import os
 import re
 from pathlib import Path
 
-log = Path('/home/windrose/server-files/R5/Saved/Logs/R5.log')
+log = Path('/home/windrose/instances/wayward-winds/server-files/R5/Saved/Logs/R5.log')
 max_bytes = 4 * 1024 * 1024
 ready_re = re.compile(r"ServerAccount\. AccountName '([^']+)'\. AccountId ([A-F0-9]+)\.")
 account_line_re = re.compile(

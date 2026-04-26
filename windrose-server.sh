@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /home/windrose
+ROOT="/home/windrose"
+INSTANCE_ROOT="$ROOT/instances/wayward-winds"
+cd "$INSTANCE_ROOT"
 
 SERVICE="windrose"
-NOTIFY="/home/windrose/server_scripts/notify_discord.sh"
-BACKUP="/home/windrose/server_scripts/backup_world.sh"
-SERVER_FILES="/home/windrose/server-files"
-MONITOR_ENABLED="/home/windrose/server_scripts/.monitor_enabled"
+NOTIFY="$ROOT/server_scripts/notify_discord.sh"
+BACKUP="$ROOT/server_scripts/backup_world.sh"
+SERVER_FILES="$INSTANCE_ROOT/server-files"
+MONITOR_ENABLED="$ROOT/server_scripts/.monitor_enabled"
 
 if ! docker ps >/dev/null 2>&1; then
   if [ "${WINDROSE_SG_REEXEC:-0}" != "1" ] && command -v sg >/dev/null 2>&1; then
@@ -15,7 +17,7 @@ if ! docker ps >/dev/null 2>&1; then
     for arg in "$@"; do
       quoted_args+=" $(printf '%q' "$arg")"
     done
-    exec sg docker -c "cd /home/windrose && WINDROSE_SG_REEXEC=1 ./windrose-server.sh$quoted_args"
+    exec sg docker -c "cd $ROOT && WINDROSE_SG_REEXEC=1 ./windrose-server.sh$quoted_args"
   fi
 
   echo "Cannot access Docker. Log out and back in, or run: newgrp docker" >&2
@@ -214,9 +216,9 @@ case "${1:-start}" in
     ;;
   stop)
     rm -f "$MONITOR_ENABLED" \
-      /home/windrose/server_scripts/.broken_queue_pending_restart \
-      /home/windrose/server_scripts/.broken_queue_last_reminder \
-      /home/windrose/server_scripts/.last_monitor_state
+      "$ROOT/server_scripts/.broken_queue_pending_restart" \
+      "$ROOT/server_scripts/.broken_queue_last_reminder" \
+      "$ROOT/server_scripts/.last_monitor_state"
     hard_stop
     notify "Server Stopped" "Windrose dedicated server stopped." "YELLOW"
     ;;

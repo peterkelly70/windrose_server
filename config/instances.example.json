@@ -1,0 +1,63 @@
+{
+  "instances": [
+    {
+      "id": "wayward-winds",
+      "name": "Wayward Winds",
+      "role": "primary",
+      "enabled": true,
+      "layout": "legacy-bridge",
+      "compose_project": "windrose-main",
+      "service_name": "windrose-main",
+      "runtime_root": "/home/windrose",
+      "data_root": "/home/windrose/server-files",
+      "env_file": "/home/windrose/.env",
+      "planned_root": "/home/windrose/instances/wayward-winds",
+      "planned_data_root": "/home/windrose/instances/wayward-winds/server-files",
+      "planned_env_file": "/home/windrose/instances/wayward-winds/.env",
+      "ports": {
+        "game": 7777,
+        "query": 7778,
+        "panel": 8091
+      },
+      "schedule": {
+        "mode": "default_on",
+        "windows": []
+      }
+    },
+    {
+      "id": "waylaid-wanderers",
+      "name": "Waylaid Wanderers",
+      "role": "scheduled",
+      "enabled": false,
+      "layout": "isolated",
+      "compose_project": "windrose-age",
+      "service_name": "windrose-age",
+      "runtime_root": "/home/windrose/instances/waylaid-wanderers",
+      "data_root": "/home/windrose/instances/waylaid-wanderers/server-files",
+      "env_file": "/home/windrose/instances/waylaid-wanderers/.env",
+      "ports": {
+        "game": 7877,
+        "query": 7878,
+        "panel": 8191
+      },
+      "schedule": {
+        "mode": "windowed",
+        "windows": [
+          {
+            "days": [
+              "mon",
+              "thu"
+            ],
+            "start": "19:30",
+            "end": "22:30"
+          }
+        ]
+      }
+    }
+  ],
+  "scheduler": {
+    "timezone": "Australia/Perth",
+    "behavior": "exclusive",
+    "default_instance": "wayward-winds"
+  }
+}

@@ -81,6 +81,32 @@ Run from `/home/windrose`.
 
 The stop command disables monitor alerts until the server is started again.
 
+## Users And Ownership
+
+Recommended model:
+
+- `windrose` is the runtime owner for the game server, panel service, monitor, scheduler, live configs, and live server data.
+- a separate operator/admin account can be used for code edits and host administration
+- the operator/admin account can be added to the `windrose` group for read access and optional shared editing where explicitly enabled
+- Docker access should be granted to both `windrose` and the chosen operator/admin account through the `docker` group
+
+Current service model:
+
+- `windrose-panel.service` runs as `windrose`
+- `windrose-monitor.service` runs as `windrose`
+- `windrose-world-scheduler.service` runs as `windrose`
+- `windrose-instance-scheduler.service` runs as `windrose`
+
+This is intentional. Running the panel and scheduled jobs as `windrose` avoids mismatches where the web panel can read live server files but cannot update them.
+
+Suggested ownership split:
+
+- repo and templates: editable by the operator/admin account
+- live server data under `instances/*/server-files`: owned by `windrose`
+- secrets and live env files: owned by `windrose`
+
+If you want group-based manual editing of live files, use the `windrose` group and grant group write on those paths explicitly. The safer default is runtime ownership by `windrose` with limited shared-write only where needed.
+
 ## Web Panel
 
 The panel runs with Gunicorn through `windrose-panel.service` and listens on port `8091` by default. It is independent from the game container: stopping, restarting, or updating the game server should not restart the web panel.
@@ -102,7 +128,7 @@ Panel endpoints:
 - `/download/world-migration` - zip current world files plus install scripts.
 - `/livemap` - public live map, if WindrosePlus data exists.
 
-The panel has tabs for Overview, Setup, Monitor, Players, and Logs. Only Overview, Monitor, Players, and Logs refresh live data in the background. Setup stays still so forms do not get overwritten while editing.
+The panel has tabs for Overview, Setup, Instance Schedule, Monitor, Players, Logs, and Report Bug. Only Overview, Monitor, Players, and Logs refresh live data in the background. Setup and Instance Schedule stay still so forms do not get overwritten while editing.
 
 The Setup tab includes a Bootstrap Install action. It installs Docker, the compose plugin, sysstat, the panel Python environment, systemd services, and pulls the Windrose image. It does not start or restart the game server. For the button to work from the web panel, the `windrose` user must be allowed to run `/home/windrose/server_scripts/bootstrap_install.sh` with passwordless sudo.
 
@@ -129,7 +155,54 @@ The Worlds section also supports:
 - a default world used outside schedule windows
 - scheduled world windows by weekday and time
 
-`windrose-world-scheduler.timer` checks the schedule every minute. If the target world changes, it updates `WorldIslandId` and restarts the game server only when the server is already running. If the server is intentionally stopped, it only updates the configured target world.
+`windrose-world-scheduler.timer` checks the legacy world schedule every minute. If the target world changes, it updates `WorldIslandId` and restarts the game server only when the server is already running. If the server is intentionally stopped, it only updates the configured target world.
+
+The Instance Schedule tab edits `config/instances.json` and stores:
+
+- scheduler timezone
+- scheduler default instance
+- whether the default instance stays up during scheduled windows
+- scheduler behavior
+- per-instance mode
+- per-instance schedule windows
+
+`windrose-instance-scheduler.timer` is the scheduler for multi-instance mode. It reads `config/instances.json`, selects the active instance for the current time, and in `exclusive` mode starts the target instance and stops the other managed instances.
+
+The instance scheduler also sends Discord notifications when the webhook is configured:
+
+- a 15-minute warning before a scheduled stop
+- a 15-minute warning before a scheduled start
+- a start notification when an instance starts
+- a stop notification when an instance stops
+
+If you are using instance scheduling, disable the legacy world scheduler timer:
+
+```bash
+sudo systemctl disable --now windrose-world-scheduler.timer
+sudo systemctl enable --now windrose-instance-scheduler.timer
+```
+
+## Multi-Instance Direction
+
+For safer operation with distinct public worlds, the intended next architecture is separate instances rather than one server rotating between worlds.
+
+Tracked planning files:
+
+- `config/instances.example.json`
+- `docs/multi-instance-architecture.md`
+
+Target pair:
+
+- `Wayward Winds`
+- `Waylaid Wanderers`
+
+This lets the scheduler start and stop isolated instances instead of changing `WorldIslandId` inside one shared install. The repo can be refactored toward that model without touching the currently running production server until a later test window.
+
+The intended long-term model is:
+
+- instance scheduling controls which server instance is active
+- the legacy world scheduler is only kept for the older single-instance world-rotation path
+- the panel, scheduler, and monitor all continue to run as `windrose`
 
 ## Monitor
 
@@ -139,6 +212,7 @@ The Worlds section also supports:
 systemctl list-timers | grep windrose
 sudo systemctl status windrose-monitor.timer
 sudo systemctl status windrose-monitor.service
+sudo systemctl status windrose-instance-scheduler.timer
 sudo systemctl status windrose-world-scheduler.timer
 ```
 

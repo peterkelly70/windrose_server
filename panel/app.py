@@ -24,21 +24,15 @@ except ModuleNotFoundError:
 
 ROOT = Path("/home/windrose")
 SCRIPT = ROOT / "windrose-server.sh"
-SERVER_FILES = ROOT / "server-files"
-SERVER_JSON = SERVER_FILES / "R5" / "ServerDescription.json"
-ENV_FILE = ROOT / ".env"
-GAME_LOG = SERVER_FILES / "R5" / "Saved" / "Logs" / "R5.log"
 PANEL_SECRET_FILE = ROOT / "panel" / ".panel_secret"
 HICCUP_LOG = ROOT / "server_scripts" / "hiccups.log"
 BOOTSTRAP_SCRIPT = ROOT / "server_scripts" / "bootstrap_install.sh"
 DISCORD_WEBHOOK_FILE = ROOT / "server_scripts" / ".discord_webhook"
-STEAM_MANIFEST = SERVER_FILES / "steamapps" / "appmanifest_4129620.acf"
-BACKUP_DIR = ROOT / "backups"
-COMPOSE_DIR = ROOT
 WINDROSE_PLUS_DATA = ROOT / "windrose_plus_data"
 PUBLIC_LIVEMAP = ROOT / "panel" / "static" / "windroseplus" / "livemap" / "index.html"
-WORLDS_DIR = SERVER_FILES / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 WORLD_SCHEDULE_FILE = ROOT / "data" / "world_schedule.json"
+INSTANCE_CONFIG_FILE = ROOT / "config" / "instances.json"
+INSTANCE_CONFIG_EXAMPLE = ROOT / "config" / "instances.example.json"
 MIGRATION_WORLD_TARGET = Path("server-files") / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 BROCCOLI_WORLD_TARGET = Path("server-files") / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
 WORLD_SETTING_LABELS = {
@@ -107,7 +101,7 @@ STEAM_TARGET_BUILD_RE = re.compile(r'"TargetBuildID"\s+"([^"]+)"')
 def run_command(args, timeout=30):
     proc = subprocess.run(
         args,
-        cwd=COMPOSE_DIR,
+        cwd=primary_runtime_root(),
         text=True,
         capture_output=True,
         timeout=timeout,
@@ -120,11 +114,207 @@ def run_command(args, timeout=30):
     }
 
 
+def primary_instance():
+    config = read_instance_config()
+    instances = config.get("instances", [])
+    scheduler = config.get("scheduler", {})
+    preferred_id = scheduler.get("default_instance", "")
+    for item in instances:
+        if item.get("id") == preferred_id:
+            return item
+    for item in instances:
+        if item.get("role") == "primary":
+            return item
+    for item in instances:
+        if item.get("enabled", False):
+            return item
+    return {
+        "id": "legacy-root",
+        "name": "Wayward Winds",
+        "service_name": "windrose",
+        "runtime_root": str(ROOT),
+        "data_root": str(ROOT / "server-files"),
+        "env_file": str(ROOT / ".env"),
+    }
+
+
 def run_command_ok(args, timeout=10):
     try:
         return run_command(args, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"ok": False, "code": 124, "stdout": "", "stderr": "Command timed out."}
+
+
+def read_instance_config():
+    source = INSTANCE_CONFIG_FILE if INSTANCE_CONFIG_FILE.is_file() else INSTANCE_CONFIG_EXAMPLE
+    try:
+        data = json.loads(source.read_text())
+    except Exception as exc:
+        return {"source": str(source), "instances": [], "scheduler": {}, "error": str(exc)}
+    data["source"] = str(source)
+    data["error"] = ""
+    return data
+
+
+def save_instance_config(data):
+    INSTANCE_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = INSTANCE_CONFIG_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(INSTANCE_CONFIG_FILE)
+
+
+def instance_by_id(instance_id=None):
+    config = read_instance_config()
+    instances = config.get("instances", [])
+    if instance_id:
+        for item in instances:
+            if item.get("id") == instance_id:
+                return item
+    return primary_instance()
+
+
+def runtime_root_for(instance=None):
+    item = instance or primary_instance()
+    return Path(item.get("runtime_root", str(ROOT)))
+
+
+def server_files_for(instance=None):
+    item = instance or primary_instance()
+    return Path(item.get("data_root", str(ROOT / "server-files")))
+
+
+def server_json_for(instance=None):
+    return server_files_for(instance) / "R5" / "ServerDescription.json"
+
+
+def env_file_for(instance=None):
+    item = instance or primary_instance()
+    return Path(item.get("env_file", str(ROOT / ".env")))
+
+
+def game_log_for(instance=None):
+    return server_files_for(instance) / "R5" / "Saved" / "Logs" / "R5.log"
+
+
+def steam_manifest_for(instance=None):
+    return server_files_for(instance) / "steamapps" / "appmanifest_4129620.acf"
+
+
+def backup_dir_for(instance=None):
+    return ROOT / "backups"
+
+
+def worlds_dir_for(instance=None):
+    return server_files_for(instance) / "R5" / "Saved" / "SaveProfiles" / "Default" / "RocksDB" / "0.10.0" / "Worlds"
+
+
+def service_name_for(instance=None):
+    item = instance or primary_instance()
+    return item.get("service_name", "windrose")
+
+
+def container_name_for(instance=None):
+    item = instance or primary_instance()
+    env = read_env_file(env_file_for(item))
+    return env.get("CONTAINER_NAME", service_name_for(item)) or service_name_for(item)
+
+
+def primary_runtime_root():
+    return runtime_root_for(primary_instance())
+
+
+def primary_server_files():
+    return server_files_for(primary_instance())
+
+
+def primary_server_json():
+    return server_json_for(primary_instance())
+
+
+def primary_env_file():
+    return env_file_for(primary_instance())
+
+
+def primary_game_log():
+    return game_log_for(primary_instance())
+
+
+def primary_steam_manifest():
+    return steam_manifest_for(primary_instance())
+
+
+def primary_backup_dir():
+    return backup_dir_for(primary_instance())
+
+
+def primary_worlds_dir():
+    return worlds_dir_for(primary_instance())
+
+
+def primary_service_name():
+    return service_name_for(primary_instance())
+
+
+def primary_container_name():
+    return container_name_for(primary_instance())
+
+
+def instance_display_name(layout, configured_name, env_file):
+    if env_file and env_file.exists():
+        env_values = read_env_file(env_file)
+        if env_values.get("SERVER_NAME", "").strip():
+            return env_values["SERVER_NAME"].strip()
+    if layout == "legacy-bridge":
+        live_name = read_config().get("server_name", "").strip()
+        if live_name:
+            return live_name
+    return configured_name
+
+
+def instance_summary():
+    config = read_instance_config()
+    instances = []
+    primary_id = primary_instance().get("id", "")
+    active_world_id = read_config().get("world_id", "")
+    live_running = docker_status().get("container") == "running"
+    for item in config.get("instances", []):
+        runtime_root = Path(item.get("runtime_root", ""))
+        data_root = Path(item.get("data_root", ""))
+        env_file = Path(item.get("env_file", ""))
+        planned_root_raw = item.get("planned_root", "") or ""
+        planned_root = Path(planned_root_raw) if planned_root_raw else None
+        info = {
+            "id": item.get("id", ""),
+            "name": item.get("name", ""),
+            "display_name": "",
+            "role": item.get("role", ""),
+            "layout": item.get("layout", ""),
+            "enabled": bool(item.get("enabled", False)),
+            "compose_project": item.get("compose_project", ""),
+            "service_name": item.get("service_name", ""),
+            "runtime_root": str(runtime_root) if runtime_root else "",
+            "runtime_exists": runtime_root.exists() if str(runtime_root) else False,
+            "data_root": str(data_root) if data_root else "",
+            "data_exists": data_root.exists() if str(data_root) else False,
+            "data_is_symlink": data_root.is_symlink() if str(data_root) else False,
+            "env_file": str(env_file) if env_file else "",
+            "env_exists": env_file.exists() if str(env_file) else False,
+            "env_is_symlink": env_file.is_symlink() if str(env_file) else False,
+            "planned_root": str(planned_root) if planned_root else "",
+            "planned_root_exists": planned_root.exists() if planned_root else False,
+            "ports": item.get("ports", {}),
+            "schedule": item.get("schedule", {}),
+            "current_live_instance": item.get("id") == primary_id and live_running,
+            "active_world_id": active_world_id if item.get("id") == primary_id else "",
+        }
+        info["display_name"] = instance_display_name(info["layout"], info["name"], env_file)
+        instances.append(info)
+    return {
+        "source": config.get("source", ""),
+        "error": config.get("error", ""),
+        "scheduler": config.get("scheduler", {}),
+        "instances": instances,
+    }
 
 
 def bug_report_settings():
@@ -137,6 +327,10 @@ def bug_report_settings():
         "api_key": api_key,
         "game_bug_url": game_bug_url,
     }
+
+
+def selected_instance():
+    return instance_by_id(request.args.get("instance", "").strip())
 
 
 def submit_bug_report_proxy(form, files):
@@ -216,16 +410,16 @@ def backup_files():
     patterns = ("windrose-*.tar.gz", "wayward-winds-*.tar.gz")
     backups = []
     for pattern in patterns:
-        backups.extend(BACKUP_DIR.glob(pattern))
+        backups.extend(primary_backup_dir().glob(pattern))
     return sorted(set(backups), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def create_spot_backup(label="spot"):
     timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    archive = BACKUP_DIR / f"windrose-{label}-{timestamp}.tar.gz"
+    archive = primary_backup_dir() / f"windrose-{label}-{timestamp}.tar.gz"
     tmp_archive = archive.with_suffix(archive.suffix + ".tmp")
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    result = run_command(["tar", "-czf", str(tmp_archive), "-C", str(SERVER_FILES), "R5"], timeout=900)
+    primary_backup_dir().mkdir(parents=True, exist_ok=True)
+    result = run_command(["tar", "-czf", str(tmp_archive), "-C", str(primary_server_files()), "R5"], timeout=900)
     if result["ok"]:
         tmp_archive.replace(archive)
     else:
@@ -243,20 +437,20 @@ def restore_latest_backup():
     if not safety["ok"]:
         return safety
 
-    stopped = docker_compose("stop", "windrose", timeout=120)
+    stopped = docker_compose("stop", primary_service_name(), timeout=120)
     if not stopped["ok"]:
         return stopped
 
-    target = SERVER_FILES / "R5"
+    target = primary_server_files() / "R5"
     if target.exists():
         shutil.rmtree(target)
 
-    restored = run_command(["tar", "-xzf", str(latest), "-C", str(SERVER_FILES)], timeout=900)
+    restored = run_command(["tar", "-xzf", str(latest), "-C", str(primary_server_files())], timeout=900)
     if not restored["ok"]:
-        docker_compose("start", "windrose", timeout=120)
+        docker_compose("start", primary_service_name(), timeout=120)
         return restored
 
-    started = docker_compose("start", "windrose", timeout=120)
+    started = docker_compose("start", primary_service_name(), timeout=120)
     if not started["ok"]:
         return started
 
@@ -319,9 +513,9 @@ def line_time(line):
     return match.group(1).replace(".", ":", 2).replace("-", " ")
 
 
-def read_config():
+def read_config(instance=None):
     try:
-        data = json.loads(SERVER_JSON.read_text())
+        data = json.loads(server_json_for(instance).read_text())
         desc = data.get("ServerDescription_Persistent", {})
     except Exception as exc:
         return {"error": str(exc)}
@@ -417,22 +611,24 @@ def write_env_file(path, updates):
     path.write_text("\n".join(output) + "\n")
 
 
-def load_server_description():
-    data = read_json_file(SERVER_JSON)
+def load_server_description(instance=None):
+    data = read_json_file(server_json_for(instance))
     if data is None or "error" in data:
-        raise ValueError(data.get("error", f"Unable to read {SERVER_JSON}") if isinstance(data, dict) else f"Unable to read {SERVER_JSON}")
+        target = server_json_for(instance)
+        raise ValueError(data.get("error", f"Unable to read {target}") if isinstance(data, dict) else f"Unable to read {target}")
     data.setdefault("ServerDescription_Persistent", {})
     return data
 
 
-def save_server_description(data):
-    tmp = SERVER_JSON.with_suffix(".json.tmp")
+def save_server_description(data, instance=None):
+    target = server_json_for(instance)
+    tmp = target.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent="\t") + "\n")
-    tmp.replace(SERVER_JSON)
+    tmp.replace(target)
 
 
-def world_exists(world_id):
-    return bool(world_id) and (WORLDS_DIR / world_id).is_dir()
+def world_exists(world_id, instance=None):
+    return bool(world_id) and (worlds_dir_for(instance) / world_id).is_dir()
 
 
 def default_world_schedule():
@@ -451,6 +647,115 @@ def normalize_schedule_entry(entry):
         "start": start,
         "end": end,
         "enabled": bool(entry.get("enabled", True)),
+    }
+
+
+def normalize_instance_window(entry):
+    days = [day for day, _label in WEEKDAY_OPTIONS if day in (entry.get("days") or [])]
+    start = str(entry.get("start", "")).strip()
+    end = str(entry.get("end", "")).strip()
+    return {
+        "id": str(entry.get("id", "")).strip(),
+        "days": days,
+        "start": start,
+        "end": end,
+        "enabled": bool(entry.get("enabled", True)),
+    }
+
+
+def read_instance_schedule():
+    config = read_instance_config()
+    scheduler = config.get("scheduler", {})
+    instances = []
+    for item in config.get("instances", []):
+        schedule = item.get("schedule", {}) if isinstance(item.get("schedule"), dict) else {}
+        instances.append({
+            "id": item.get("id", ""),
+            "name": item.get("name", "") or item.get("id", ""),
+            "enabled": bool(item.get("enabled", False)),
+            "mode": str(schedule.get("mode", "default_on")).strip() or "default_on",
+            "windows": [normalize_instance_window(window) for window in schedule.get("windows", []) if isinstance(window, dict)],
+        })
+    return {
+        "source": config.get("source", ""),
+        "error": config.get("error", ""),
+        "timezone": str(scheduler.get("timezone", "Australia/Perth")).strip() or "Australia/Perth",
+        "behavior": str(scheduler.get("behavior", "exclusive")).strip() or "exclusive",
+        "default_instance": str(scheduler.get("default_instance", "")).strip(),
+        "default_instance_always_on": bool(scheduler.get("default_instance_always_on", False)),
+        "instances": instances,
+        "weekday_options": WEEKDAY_OPTIONS,
+    }
+
+
+def update_instance_schedule(form):
+    config = read_instance_config()
+    if config.get("error"):
+        raise ValueError(config["error"])
+
+    instances = config.get("instances", [])
+    instance_ids = {str(item.get("id", "")).strip() for item in instances if str(item.get("id", "")).strip()}
+    scheduler = config.setdefault("scheduler", {})
+
+    if "scheduler_timezone" in form or "scheduler_behavior" in form or "default_instance_id" in form or "default_instance_always_on" in form:
+        timezone_name = form.get("scheduler_timezone", "").strip() or scheduler.get("timezone", "Australia/Perth")
+        behavior = form.get("scheduler_behavior", "").strip() or "exclusive"
+        default_instance_id = form.get("default_instance_id", "").strip()
+        if default_instance_id and default_instance_id not in instance_ids:
+            raise ValueError("Default instance must match a configured instance.")
+        if behavior not in {"exclusive"}:
+            raise ValueError("Unsupported scheduler behavior.")
+        scheduler["timezone"] = timezone_name
+        scheduler["behavior"] = behavior
+        scheduler["default_instance"] = default_instance_id
+        scheduler["default_instance_always_on"] = form.get("default_instance_always_on") == "on"
+
+    schedule_instance_id = form.get("schedule_instance_id", "").strip()
+    if schedule_instance_id:
+        target = next((item for item in instances if item.get("id") == schedule_instance_id), None)
+        if target is None:
+            raise ValueError("Selected instance was not found.")
+
+        schedule = target.setdefault("schedule", {})
+        schedule["mode"] = form.get("schedule_mode", "").strip() or schedule.get("mode", "default_on") or "default_on"
+        if schedule["mode"] not in {"default_on", "windowed", "off"}:
+            raise ValueError("Unsupported schedule mode.")
+
+        existing = [normalize_instance_window(item) for item in schedule.get("windows", []) if isinstance(item, dict)]
+        window_id = form.get("window_id", "").strip()
+        if window_id:
+            remaining = [item for item in existing if item["id"] != window_id]
+            if form.get("schedule_delete") == "on":
+                schedule["windows"] = remaining
+            else:
+                start = form.get("schedule_start", "").strip()
+                end = form.get("schedule_end", "").strip()
+                days = [day for day, _label in WEEKDAY_OPTIONS if form.get(f"schedule_day_{day}") == "on"]
+                if not days:
+                    raise ValueError("Select at least one day for the instance schedule window.")
+                validate_time_hhmm(start, "Schedule start")
+                validate_time_hhmm(end, "Schedule end")
+                schedule["windows"] = remaining + [{
+                    "id": window_id,
+                    "days": days,
+                    "start": start,
+                    "end": end,
+                    "enabled": form.get("schedule_entry_enabled") == "on",
+                }]
+        else:
+            schedule["windows"] = existing
+
+        schedule["windows"] = sorted(schedule["windows"], key=lambda item: (item["start"], item["end"], item["id"]))
+
+    save_instance_config({
+        "instances": instances,
+        "scheduler": scheduler,
+    })
+    return {
+        "ok": True,
+        "code": 0,
+        "stdout": "Instance schedule saved.",
+        "stderr": "",
     }
 
 
@@ -492,10 +797,10 @@ def validate_time_hhmm(value, label):
         raise ValueError(f"{label} must use a valid 24-hour time.")
 
 
-def current_world_details():
-    config = read_config()
+def current_world_details(instance=None):
+    config = read_config(instance)
     world_id = config.get("world_id", "")
-    world = next((item for item in world_summary() if item["id"] == world_id), None)
+    world = next((item for item in world_summary(instance) if item["id"] == world_id), None)
     return {
         "id": world_id,
         "name": world["name"] if world else "",
@@ -504,12 +809,12 @@ def current_world_details():
 
 
 def set_active_world_id(world_id):
-    if world_id and not world_exists(world_id):
+    if world_id and not world_exists(world_id, primary_instance()):
         raise ValueError(f"World not found: {world_id}")
-    data = load_server_description()
+    data = load_server_description(primary_instance())
     desc = data["ServerDescription_Persistent"]
     desc["WorldIslandId"] = world_id
-    save_server_description(data)
+    save_server_description(data, primary_instance())
 
 
 def switch_world(world_id, reason="manual switch"):
@@ -601,19 +906,19 @@ def update_world_schedule(form):
     }
 
 
-def active_world_description_path(world_id=None):
-    world_id = world_id or read_config().get("world_id", "")
+def active_world_description_path(world_id=None, instance=None):
+    world_id = world_id or read_config(instance).get("world_id", "")
     if not world_id:
         return None
-    return WORLDS_DIR / world_id / "WorldDescription.json"
+    return worlds_dir_for(instance) / world_id / "WorldDescription.json"
 
 
 def world_setting_key(tag_name):
     return json.dumps({"TagName": tag_name}, separators=(", ", ": "))
 
 
-def read_world_settings():
-    path = active_world_description_path()
+def read_world_settings(instance=None):
+    path = active_world_description_path(instance=instance)
     if path is None:
         return {"error": "No active world ID is configured.", "float_parameters": []}
     data = read_json_file(path)
@@ -701,7 +1006,7 @@ def update_server_settings(form):
     save_server_description(data)
     update_world_settings(form)
     update_discord_settings(form)
-    write_env_file(ENV_FILE, {
+    write_env_file(primary_env_file(), {
         "SERVER_NAME": server_name,
         "INVITE_CODE": invite_code,
         "SERVER_PASSWORD": password,
@@ -718,11 +1023,11 @@ def update_server_settings(form):
     }
 
 
-def world_summary():
+def world_summary(instance=None):
     worlds = []
-    active_world_id = read_config().get("world_id", "")
-    if WORLDS_DIR.is_dir():
-        for path in sorted(WORLDS_DIR.iterdir()):
+    active_world_id = read_config(instance).get("world_id", "")
+    if worlds_dir_for(instance).is_dir():
+        for path in sorted(worlds_dir_for(instance).iterdir()):
             if not path.is_dir():
                 continue
             desc = read_json_file(path / "WorldDescription.json") or {}
@@ -761,12 +1066,12 @@ def create_new_world():
         return stopped
 
     timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    archive_root = BACKUP_DIR / "archived-worlds" / timestamp
+    archive_root = primary_backup_dir() / "archived-worlds" / timestamp
     archive_root.mkdir(parents=True, exist_ok=True)
 
     moved = []
-    if WORLDS_DIR.is_dir():
-        for path in sorted(WORLDS_DIR.iterdir()):
+    if primary_worlds_dir().is_dir():
+        for path in sorted(primary_worlds_dir().iterdir()):
             if path.is_dir():
                 shutil.move(str(path), str(archive_root / path.name))
                 moved.append(path.name)
@@ -775,7 +1080,7 @@ def create_new_world():
     desc = data["ServerDescription_Persistent"]
     desc["WorldIslandId"] = ""
     save_server_description(data)
-    write_env_file(ENV_FILE, {"GENERATE_SETTINGS": "false"})
+    write_env_file(primary_env_file(), {"GENERATE_SETTINGS": "false"})
 
     started = run_command(["bash", str(SCRIPT), "start"], timeout=900)
     if not started["ok"]:
@@ -794,8 +1099,8 @@ def create_new_world():
     }
 
 
-def version_summary():
-    text = read_tail(GAME_LOG, GAME_LOG_BYTES)
+def version_summary(instance=None):
+    text = read_tail(game_log_for(instance), GAME_LOG_BYTES)
     versions = {
         "game_version": "unknown",
         "release_version": "unknown",
@@ -812,7 +1117,7 @@ def version_summary():
             versions["deployment_id"] = match.group("deployment")
 
     try:
-        manifest = STEAM_MANIFEST.read_text()
+        manifest = steam_manifest_for(instance).read_text()
     except OSError:
         manifest = ""
 
@@ -826,7 +1131,7 @@ def version_summary():
     return versions
 
 
-def docker_status():
+def docker_status(instance=None):
     if not shutil.which("docker"):
         return {
             "container": "docker-missing",
@@ -836,17 +1141,18 @@ def docker_status():
             "ps": "Docker is not installed or not in PATH.",
         }
 
+    item = instance or primary_instance()
     inspect = run_command(
         [
             "docker",
             "inspect",
-            "windrose",
+            container_name_for(item),
             "--format",
             "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|{{.State.StartedAt}}|{{.HostConfig.RestartPolicy.Name}}",
         ],
         timeout=10,
     )
-    ps = docker_compose("ps", timeout=10)
+    ps = run_command(["docker", "compose", "ps"], timeout=10)
 
     if not inspect["ok"]:
         return {
@@ -867,15 +1173,15 @@ def docker_status():
     }
 
 
-def docker_logs():
+def docker_logs(instance=None):
     if not shutil.which("docker"):
         return "Docker is not installed or not in PATH."
-    result = docker_compose("logs", "--tail", str(LOG_LINES), "windrose", timeout=15)
+    result = run_command(["docker", "compose", "logs", "--tail", str(LOG_LINES), service_name_for(instance or primary_instance())], timeout=15)
     return result["stdout"] or result["stderr"]
 
 
-def game_summary():
-    text = read_tail(GAME_LOG, GAME_LOG_BYTES)
+def game_summary(instance=None):
+    text = read_tail(game_log_for(instance), GAME_LOG_BYTES)
     players = {}
     disconnected = {}
     latest_errors = []
@@ -970,10 +1276,63 @@ def backup_summary():
     }
 
 
-def windrose_pid():
+def windrose_pid(instance=None):
+    inspect = run_command_ok(
+        ["docker", "inspect", container_name_for(instance or primary_instance()), "--format", "{{.State.Pid}}"],
+        timeout=5,
+    )
+    try:
+        root_pid = int((inspect.get("stdout") or "").strip())
+    except ValueError:
+        root_pid = 0
+
     result = run_command_ok(["ps", "-eo", "pid=,stat=,cmd="], timeout=5)
     if not result["ok"] or not result["stdout"]:
         return ""
+
+    if root_pid:
+        tree = run_command_ok(["ps", "-eo", "pid=,ppid=,stat=,cmd="], timeout=5)
+        if tree["ok"] and tree["stdout"]:
+            children = {}
+            records = {}
+            for line in tree["stdout"].splitlines():
+                parts = line.strip().split(maxsplit=3)
+                if len(parts) < 4:
+                    continue
+                pid, ppid, stat, cmd = parts
+                try:
+                    pid_i = int(pid)
+                    ppid_i = int(ppid)
+                except ValueError:
+                    continue
+                children.setdefault(ppid_i, []).append(pid_i)
+                records[pid_i] = (stat, cmd)
+
+            queue = [root_pid]
+            descendants = []
+            seen = set()
+            while queue:
+                current = queue.pop(0)
+                if current in seen:
+                    continue
+                seen.add(current)
+                for child in children.get(current, []):
+                    descendants.append(child)
+                    queue.append(child)
+
+            fallbacks = []
+            for pid_i in descendants:
+                stat, cmd = records.get(pid_i, ("", ""))
+                if stat.startswith("Z"):
+                    continue
+                if "WindroseServer-Win64-Shipping.exe" not in cmd and "WindroseServer-Linux" not in cmd:
+                    continue
+                if "xvfb-run" in cmd or cmd.startswith("start.exe"):
+                    fallbacks.append(str(pid_i))
+                    continue
+                return str(pid_i)
+            if fallbacks:
+                return fallbacks[0]
 
     fallbacks = []
     for line in result["stdout"].splitlines():
@@ -1039,8 +1398,8 @@ def disk_monitor():
     return {"usage": usage, "device_io": device}
 
 
-def log_performance_summary(window_seconds=300):
-    text = read_tail(GAME_LOG, max(GAME_LOG_BYTES, 6 * 1024 * 1024))
+def log_performance_summary(window_seconds=300, instance=None):
+    text = read_tail(game_log_for(instance), max(GAME_LOG_BYTES, 6 * 1024 * 1024))
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=window_seconds)
     db_slow = 0
@@ -1086,7 +1445,9 @@ def log_performance_summary(window_seconds=300):
     }
 
 
-def hiccup_history(limit=80):
+def hiccup_history(limit=80, instance=None):
+    if instance and instance.get("id") != primary_instance().get("id"):
+        return []
     if not HICCUP_LOG.is_file():
         return []
     try:
@@ -1102,25 +1463,26 @@ def hiccup_history(limit=80):
     return items
 
 
-def monitor_summary():
-    pid = windrose_pid()
+def monitor_summary(instance=None):
+    pid = windrose_pid(instance)
     return {
         "process": process_monitor(pid),
         "disk": disk_monitor(),
-        "performance": log_performance_summary(),
-        "hiccups": hiccup_history(),
+        "performance": log_performance_summary(instance=instance),
+        "hiccups": hiccup_history(instance=instance),
     }
 
 
-def install_status():
+def install_status(instance=None):
     return {
         "docker": shutil.which("docker") or "",
         "compose": run_command_ok(["docker", "compose", "version"], timeout=5)["stdout"] if shutil.which("docker") else "",
-        "server_files": SERVER_FILES.is_dir(),
-        "steam_manifest": STEAM_MANIFEST.is_file(),
+        "server_files": server_files_for(instance).is_dir(),
+        "steam_manifest": steam_manifest_for(instance).is_file(),
         "panel_service": run_command_ok(["systemctl", "is-enabled", "windrose-panel.service"], timeout=5)["stdout"],
         "monitor_timer": run_command_ok(["systemctl", "is-enabled", "windrose-monitor.timer"], timeout=5)["stdout"],
         "world_scheduler_timer": run_command_ok(["systemctl", "is-enabled", "windrose-world-scheduler.timer"], timeout=5)["stdout"],
+        "instance_scheduler_timer": run_command_ok(["systemctl", "is-enabled", "windrose-instance-scheduler.timer"], timeout=5)["stdout"],
         "bootstrap_script": str(BOOTSTRAP_SCRIPT),
     }
 
@@ -1219,8 +1581,8 @@ exit /b 0
 
 
 def build_world_migration_zip():
-    if not WORLDS_DIR.is_dir():
-        return None, f"Worlds directory not found: {WORLDS_DIR}"
+    if not primary_worlds_dir().is_dir():
+        return None, f"Worlds directory not found: {primary_worlds_dir()}"
 
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
@@ -1245,9 +1607,9 @@ def build_world_migration_zip():
         archive.writestr("install-world.sh", migration_install_sh())
         archive.writestr("install-world.bat", migration_install_bat())
 
-        for path in sorted(WORLDS_DIR.rglob("*")):
+        for path in sorted(primary_worlds_dir().rglob("*")):
             if path.is_file():
-                rel = path.relative_to(WORLDS_DIR)
+                rel = path.relative_to(primary_worlds_dir())
                 archive.write(path, Path("migration") / "Worlds" / rel)
 
     buffer.seek(0)
@@ -1303,23 +1665,27 @@ def logout():
 @app.route("/")
 @require_login
 def index():
+    selected = selected_instance()
     return render_template(
         "index.html",
-        config=read_config(),
-        current_world=current_world_details(),
-        status=docker_status(),
-        game=game_summary(),
-        version=version_summary(),
+        config=read_config(selected),
+        current_world=current_world_details(selected),
+        status=docker_status(selected),
+        game=game_summary(selected),
+        version=version_summary(selected),
         backups=backup_summary(),
-        monitor=monitor_summary(),
-        worlds=world_summary(),
+        monitor=monitor_summary(selected),
+        instance_summary=instance_summary(),
+        worlds=world_summary(selected),
         world_schedule=read_world_schedule(),
+        instance_schedule=read_instance_schedule(),
         world_settings=read_world_settings(),
         bug_report=bug_report_settings(),
-        env=read_env_file(ENV_FILE),
+        env=read_env_file(primary_env_file()),
         discord=read_discord_settings(),
-        install=install_status(),
-        logs=docker_logs(),
+        install=install_status(selected),
+        logs=docker_logs(selected),
+        selected_instance_id=selected.get("id", ""),
         checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
@@ -1397,23 +1763,39 @@ def worlds_schedule():
     return redirect(url_for("index", tab="setup"))
 
 
+@app.post("/instances/schedule")
+@require_login
+def instances_schedule():
+    try:
+        result = update_instance_schedule(request.form)
+    except Exception as exc:
+        flash(f"Instance schedule update failed: {exc}", "bad")
+        return redirect(url_for("index", tab="instance-schedule"))
+    flash(result["stdout"], "good")
+    return redirect(url_for("index", tab="instance-schedule"))
+
+
 @app.get("/api/status")
 @require_login
 def api_status():
+    selected = selected_instance()
     body = {
-        "config": read_config(),
-        "current_world": current_world_details(),
-        "status": docker_status(),
-        "game": game_summary(),
-        "version": version_summary(),
+        "selected_instance_id": selected.get("id", ""),
+        "config": read_config(selected),
+        "current_world": current_world_details(selected),
+        "status": docker_status(selected),
+        "game": game_summary(selected),
+        "version": version_summary(selected),
         "backups": backup_summary(),
-        "monitor": monitor_summary(),
-        "worlds": world_summary(),
+        "monitor": monitor_summary(selected),
+        "instance_summary": instance_summary(),
+        "worlds": world_summary(selected),
         "world_schedule": read_world_schedule(),
-        "world_settings": read_world_settings(),
+        "instance_schedule": read_instance_schedule(),
+        "world_settings": read_world_settings(selected),
         "bug_report": bug_report_settings(),
         "discord": read_discord_settings(),
-        "install": install_status(),
+        "install": install_status(selected),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     return app.response_class(json.dumps(body, indent=2), mimetype="application/json")
@@ -1438,13 +1820,13 @@ def install_bootstrap():
 @app.get("/api/monitor")
 @require_login
 def api_monitor():
-    return app.response_class(json.dumps(monitor_summary(), indent=2), mimetype="application/json")
+    return app.response_class(json.dumps(monitor_summary(selected_instance()), indent=2), mimetype="application/json")
 
 
 @app.get("/api/logs")
 @require_login
 def api_logs():
-    return Response(docker_logs(), mimetype="text/plain")
+    return Response(docker_logs(selected_instance()), mimetype="text/plain")
 
 
 @app.get("/download/world-migration")

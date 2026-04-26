@@ -96,6 +96,25 @@
       button.logout { background: #4a4f55; }
       .top-actions { display: flex; gap: 10px; align-items: center; }
       .top-actions form { margin: 0; }
+      .instance-picker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .instance-picker label {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .instance-picker select {
+        min-width: 220px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: rgba(16, 18, 18, 0.72);
+        color: var(--text);
+        font: inherit;
+      }
       .tabs {
         display: flex;
         flex-wrap: wrap;
@@ -213,7 +232,7 @@
         font-size: 13px;
         margin-bottom: 6px;
       }
-      input[type="text"], input[type="number"], input[type="password"] {
+      input[type="text"], input[type="number"], input[type="password"], input[type="time"], select {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -232,6 +251,54 @@
         padding: 14px;
         border-top: 1px solid var(--line);
       }
+      .schedule-shell {
+        padding: 14px;
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 16px;
+      }
+      .schedule-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .schedule-nav button {
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--line);
+        background: rgba(16, 18, 18, 0.72);
+      }
+      .schedule-nav button.active {
+        background: linear-gradient(135deg, rgba(47, 120, 101, 0.95), rgba(34, 101, 121, 0.92));
+        border-color: rgba(255, 248, 232, 0.28);
+      }
+      .schedule-nav-title {
+        display: block;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .schedule-nav-meta {
+        display: block;
+        margin-top: 4px;
+        color: rgba(255, 248, 232, 0.82);
+        font-size: 12px;
+      }
+      .schedule-detail { min-width: 0; }
+      .schedule-pane { display: none; }
+      .schedule-pane.active { display: block; }
+      .schedule-card-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        padding: 14px;
+      }
+      .schedule-stat {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: rgba(16, 18, 18, 0.56);
+      }
+      .schedule-stat .value { font-size: 16px; }
       .flash { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); }
       .flash.good { border: 1px solid var(--good); }
       .flash.bad { border: 1px solid var(--bad); }
@@ -320,6 +387,8 @@
         .form-grid { grid-template-columns: 1fr; }
         .report-grid { grid-template-columns: 1fr; }
         .deck { grid-template-columns: 1fr; }
+        .schedule-shell { grid-template-columns: 1fr; }
+        .schedule-card-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 620px) {
         .grid { grid-template-columns: 1fr; }
@@ -338,8 +407,16 @@
         <div class="brand">
           <img src="{{ url_for('static', filename='images/pirate-ship.svg') }}" alt="">
           <div>
-            <h1>{{ config.server_name or "Windrose Server" }}</h1>
+            <h1 id="server-title">{{ config.server_name or "Windrose Server" }}</h1>
             <p>Checked <span data-field="checked_at">{{ checked_at }}</span>. Active tabs refresh in the background.</p>
+            <div class="instance-picker">
+              <label for="instance-select">Server</label>
+              <select id="instance-select">
+                {% for instance in instance_summary.instances %}
+                  <option value="{{ instance.id }}" {% if instance.id == selected_instance_id %}selected{% endif %}>{{ instance.display_name or instance.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
         </div>
         <div class="top-actions">
@@ -358,6 +435,7 @@
       <nav class="tabs" aria-label="Panel sections">
         <button type="button" data-tab="overview">Overview</button>
         <button type="button" data-tab="setup">Setup</button>
+        <button type="button" data-tab="instance-schedule">Instance Schedule</button>
         <button type="button" data-tab="monitor">Monitor</button>
         <button type="button" data-tab="players">Players</button>
         <button type="button" data-tab="logs">Logs</button>
@@ -380,16 +458,16 @@
             </div>
             <div class="tile">
               <div class="label">Invite Code</div>
-              <div class="value">{{ config.invite_code }}</div>
-              <div class="small">Password: {{ 'on' if config.password_protected else 'off' }}</div>
+              <div class="value" data-field="invite_code">{{ config.invite_code }}</div>
+              <div class="small" data-field="password_protected">Password: {{ 'on' if config.password_protected else 'off' }}</div>
             </div>
             <div class="tile">
               <div class="label">Terrain</div>
-              <div class="value">{{ game.last_terrain }}</div>
+              <div class="value" data-field="last_terrain">{{ game.last_terrain }}</div>
             </div>
             <div class="tile">
               <div class="label">World</div>
-              <div class="value">{{ config.world_id }}</div>
+              <div class="value" data-field="world_id">{{ config.world_id }}</div>
             </div>
             <div class="tile">
               <div class="label">Backend Session</div>
@@ -397,23 +475,23 @@
             </div>
             <div class="tile">
               <div class="label">Game Version</div>
-              <div class="value">{{ version.game_version }}</div>
-              <div class="small">Steam build {{ version.steam_build }}</div>
+              <div class="value" data-field="game_version">{{ version.game_version }}</div>
+              <div class="small" data-field="steam_build">Steam build {{ version.steam_build }}</div>
             </div>
             <div class="tile">
               <div class="label">Deployment</div>
-              <div class="value">{{ version.deployment_id }}</div>
-              <div class="small">Release {{ version.release_version }}</div>
+              <div class="value" data-field="deployment_id">{{ version.deployment_id }}</div>
+              <div class="small" data-field="release_version">Release {{ version.release_version }}</div>
             </div>
             <div class="tile">
               <div class="label">Latest Backup</div>
-              <div class="value">{{ backups.latest }}</div>
-              <div class="small">{{ backups.latest_size }} · {{ backups.count }} kept</div>
+              <div class="value" data-field="backup_latest">{{ backups.latest }}</div>
+              <div class="small" data-field="backup_summary">{{ backups.latest_size }} · {{ backups.count }} kept</div>
             </div>
             <div class="tile">
               <div class="label">Last Log</div>
               <div class="value" data-field="last_log_time">{{ game.last_log_time or 'unknown' }}</div>
-              <div class="small">Started {{ status.started_at }}</div>
+              <div class="small" data-field="started_at">Started {{ status.started_at }}</div>
             </div>
           </div>
           <div class="map-panel">
@@ -451,6 +529,7 @@
               <div class="metric-row"><span>Panel</span><span>{{ install.panel_service or 'unknown' }}</span></div>
               <div class="metric-row"><span>Monitor timer</span><span>{{ install.monitor_timer or 'unknown' }}</span></div>
               <div class="metric-row"><span>World schedule timer</span><span>{{ install.world_scheduler_timer or 'unknown' }}</span></div>
+              <div class="metric-row"><span>Instance schedule timer</span><span>{{ install.instance_scheduler_timer or 'unknown' }}</span></div>
               <div class="metric-row"><span>Bootstrap</span><span>{{ install.bootstrap_script }}</span></div>
             </div>
           </div>
@@ -460,6 +539,37 @@
               <button class="update">Run Bootstrap Install</button>
             </form>
           </div>
+        </section>
+
+        <section>
+          <h2>Instances</h2>
+          {% if instance_summary.error %}
+            <div class="empty">{{ instance_summary.error }}</div>
+          {% else %}
+            <div class="empty">Config source: {{ instance_summary.source }}. This is read-only scaffolding for the multi-instance migration.</div>
+            <table>
+              <thead><tr><th>Name</th><th>ID</th><th>Layout</th><th>Runtime Root</th><th>Data</th><th>Env</th><th>Ports</th><th>Status</th></tr></thead>
+              <tbody>
+                {% for instance in instance_summary.instances %}
+                  <tr>
+                    <td data-label="Name">{{ instance.display_name or instance.name }}</td>
+                    <td data-label="ID">{{ instance.id }}</td>
+                    <td data-label="Layout">{{ instance.layout }}</td>
+                    <td data-label="Runtime Root">{{ instance.runtime_root }}{% if instance.planned_root %}<div class="small">planned: {{ instance.planned_root }}</div>{% endif %}</td>
+                    <td data-label="Data">{{ instance.data_root }}<div class="small">{{ 'present' if instance.data_exists else 'missing' }}{% if instance.data_is_symlink %} · symlink{% endif %}</div></td>
+                    <td data-label="Env">{{ instance.env_file }}<div class="small">{{ 'present' if instance.env_exists else 'missing' }}{% if instance.env_is_symlink %} · symlink{% endif %}</div></td>
+                    <td data-label="Ports">game {{ instance.ports.game }} / query {{ instance.ports.query }}</td>
+                    <td data-label="Status">
+                      {{ 'enabled' if instance.enabled else 'disabled' }}
+                      {% if instance.current_live_instance %}
+                        <div class="small">current live instance · world {{ instance.active_world_id or 'unknown' }}</div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
         </section>
 
         <section>
@@ -646,6 +756,166 @@
         </section>
       </div>
 
+      <section id="instance-schedule" class="tab-panel">
+        <h2>Instance Scheduler</h2>
+        {% if instance_schedule.error %}
+          <div class="empty">{{ instance_schedule.error }}</div>
+        {% else %}
+          <div class="empty">This tab edits per-instance schedule windows in {{ instance_schedule.source }}. When `windrose-instance-scheduler.timer` is enabled, it starts and stops instances from this config in exclusive mode.</div>
+
+          <form method="post" action="{{ url_for('instances_schedule') }}">
+            <div class="form-grid">
+              <div class="field">
+                <label for="scheduler_timezone">Timezone</label>
+                <input id="scheduler_timezone" name="scheduler_timezone" type="text" value="{{ instance_schedule.timezone }}">
+              </div>
+              <div class="field">
+                <label for="scheduler_behavior">Behavior</label>
+                <select id="scheduler_behavior" name="scheduler_behavior">
+                  <option value="exclusive" {% if instance_schedule.behavior == 'exclusive' %}selected{% endif %}>Exclusive</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="default_instance_id">Default Instance</label>
+                <select id="default_instance_id" name="default_instance_id">
+                  <option value="">None</option>
+                  {% for instance in instance_schedule.instances %}
+                    <option value="{{ instance.id }}" {% if instance.id == instance_schedule.default_instance %}selected{% endif %}>{{ instance.name }} ({{ instance.id }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="check-field">
+                <input id="default_instance_always_on" name="default_instance_always_on" type="checkbox" {% if instance_schedule.default_instance_always_on %}checked{% endif %}>
+                <label for="default_instance_always_on">Keep default instance running during scheduled windows</label>
+              </div>
+            </div>
+            <div class="actions" style="padding: 0 14px 14px;">
+              <button class="update">Save Scheduler Defaults</button>
+            </div>
+          </form>
+
+          <div class="schedule-shell">
+            <div class="schedule-nav" aria-label="Instances">
+              {% for instance in instance_schedule.instances %}
+                <button type="button" class="instance-schedule-select" data-instance-pane="{{ instance.id }}">
+                  <span class="schedule-nav-title">{{ instance.name }}</span>
+                  <span class="schedule-nav-meta">{{ instance.mode }} · {{ instance.windows|length }} window{{ '' if instance.windows|length == 1 else 's' }} · {{ 'enabled' if instance.enabled else 'disabled' }}</span>
+                </button>
+              {% endfor %}
+            </div>
+            <div class="schedule-detail">
+              {% for instance in instance_schedule.instances %}
+                <div class="schedule-pane" data-instance-pane="{{ instance.id }}">
+                  <section>
+                    <h2>{{ instance.name }}</h2>
+                    <div class="schedule-card-grid">
+                      <div class="schedule-stat">
+                        <div class="label">Instance ID</div>
+                        <div class="value">{{ instance.id }}</div>
+                      </div>
+                      <div class="schedule-stat">
+                        <div class="label">Mode</div>
+                        <div class="value">{{ instance.mode }}</div>
+                      </div>
+                      <div class="schedule-stat">
+                        <div class="label">Windows</div>
+                        <div class="value">{{ instance.windows|length }}</div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section>
+                    <h2>{{ instance.name }} Mode</h2>
+                    <form method="post" action="{{ url_for('instances_schedule') }}">
+                      <input type="hidden" name="schedule_instance_id" value="{{ instance.id }}">
+                      <div class="form-grid">
+                        <div class="field">
+                          <label for="schedule_mode_{{ instance.id }}">Mode</label>
+                          <select id="schedule_mode_{{ instance.id }}" name="schedule_mode">
+                            <option value="default_on" {% if instance.mode == 'default_on' %}selected{% endif %}>Default On</option>
+                            <option value="windowed" {% if instance.mode == 'windowed' %}selected{% endif %}>Windowed</option>
+                            <option value="off" {% if instance.mode == 'off' %}selected{% endif %}>Off</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="actions" style="padding: 0 14px 14px;">
+                        <button class="update">Save Mode</button>
+                      </div>
+                    </form>
+                  </section>
+
+                  <section>
+                    <h2>{{ instance.name }} Windows</h2>
+                    {% if instance.windows %}
+                      <table>
+                        <thead><tr><th>Days</th><th>Window</th><th>Enabled</th><th>Action</th></tr></thead>
+                        <tbody>
+                          {% for window in instance.windows %}
+                            <tr>
+                              <td data-label="Days">{{ window.days|join(', ') }}</td>
+                              <td data-label="Window">{{ window.start }} - {{ window.end }}</td>
+                              <td data-label="Enabled">{{ 'yes' if window.enabled else 'no' }}</td>
+                              <td data-label="Action">
+                                <form method="post" action="{{ url_for('instances_schedule') }}" onsubmit="return confirm('Delete this instance schedule window?')">
+                                  <input type="hidden" name="schedule_instance_id" value="{{ instance.id }}">
+                                  <input type="hidden" name="schedule_mode" value="{{ instance.mode }}">
+                                  <input type="hidden" name="window_id" value="{{ window.id }}">
+                                  <input type="hidden" name="schedule_delete" value="on">
+                                  <button class="stop">Delete</button>
+                                </form>
+                              </td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    {% else %}
+                      <div class="empty">No windows configured for this instance.</div>
+                    {% endif %}
+                  </section>
+
+                  <section>
+                    <h2>Add Window</h2>
+                    <form method="post" action="{{ url_for('instances_schedule') }}">
+                      <input type="hidden" name="schedule_instance_id" value="{{ instance.id }}">
+                      <input type="hidden" name="schedule_mode" value="{{ instance.mode }}">
+                      <input type="hidden" name="window_id" value="{{ instance.id }}-{{ checked_at|replace(' ', '-')|replace(':', '') }}">
+                      <div class="form-grid">
+                        <div class="field">
+                          <label for="schedule_start_{{ instance.id }}">Start</label>
+                          <input id="schedule_start_{{ instance.id }}" name="schedule_start" type="time" value="19:30">
+                        </div>
+                        <div class="field">
+                          <label for="schedule_end_{{ instance.id }}">End</label>
+                          <input id="schedule_end_{{ instance.id }}" name="schedule_end" type="time" value="22:30">
+                        </div>
+                        <div class="field">
+                          <label>Days</label>
+                          <div>
+                            {% for day, label in instance_schedule.weekday_options %}
+                              <div class="check-field" style="padding-top: 0;">
+                                <input id="instance_{{ instance.id }}_day_{{ day }}" name="schedule_day_{{ day }}" type="checkbox" {% if day in ['mon', 'thu'] %}checked{% endif %}>
+                                <label for="instance_{{ instance.id }}_day_{{ day }}">{{ label }}</label>
+                              </div>
+                            {% endfor %}
+                          </div>
+                        </div>
+                        <div class="check-field">
+                          <input id="instance_{{ instance.id }}_enabled" name="schedule_entry_enabled" type="checkbox" checked>
+                          <label for="instance_{{ instance.id }}_enabled">Entry enabled</label>
+                        </div>
+                      </div>
+                      <div class="actions" style="padding: 0 14px 14px;">
+                        <button class="update">Add Window</button>
+                      </div>
+                    </form>
+                  </section>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </section>
+
       <section id="monitor" class="tab-panel">
         <h2>Monitor</h2>
         <div class="monitor-grid">
@@ -814,14 +1084,48 @@
       <script>
         const tabs = Array.from(document.querySelectorAll(".tabs button"));
         const panels = Array.from(document.querySelectorAll(".tab-panel"));
+        const instanceSelect = document.getElementById("instance-select");
+        function syncUrl() {
+          const url = new URL(window.location.href);
+          const activeTab = document.querySelector(".tabs button.active")?.dataset.tab || localStorage.getItem("windrose-panel-tab") || "overview";
+          const instanceId = currentInstanceId();
+          if (activeTab) url.searchParams.set("tab", activeTab);
+          if (instanceId) {
+            url.searchParams.set("instance", instanceId);
+          } else {
+            url.searchParams.delete("instance");
+          }
+          if (activeTab) url.hash = activeTab;
+          history.replaceState(null, "", url.toString());
+        }
         function showTab(name) {
           tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
           panels.forEach((panel) => panel.classList.toggle("active", panel.id === name));
           localStorage.setItem("windrose-panel-tab", name);
-          if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+          syncUrl();
+        }
+        function selectInstanceSchedulePane(instanceId) {
+          const scheduleButtons = Array.from(document.querySelectorAll(".instance-schedule-select"));
+          const schedulePanes = Array.from(document.querySelectorAll(".schedule-pane"));
+          if (!scheduleButtons.length || !schedulePanes.length) return;
+          const resolved = scheduleButtons.some((button) => button.dataset.instancePane === instanceId)
+            ? instanceId
+            : scheduleButtons[0].dataset.instancePane;
+          scheduleButtons.forEach((button) => button.classList.toggle("active", button.dataset.instancePane === resolved));
+          schedulePanes.forEach((pane) => pane.classList.toggle("active", pane.dataset.instancePane === resolved));
+          localStorage.setItem("windrose-instance-schedule-pane", resolved);
         }
         function setText(name, value) {
           document.querySelectorAll(`[data-field="${name}"]`).forEach((node) => { node.textContent = value; });
+        }
+        function currentInstanceId() {
+          return instanceSelect?.value || "{{ selected_instance_id }}";
+        }
+        function instanceUrl(base) {
+          const url = new URL(base, window.location.origin);
+          const instanceId = currentInstanceId();
+          if (instanceId) url.searchParams.set("instance", instanceId);
+          return url.toString();
         }
         function classLevel(node, value, warnAt, badAt) {
           if (!node) return;
@@ -849,13 +1153,26 @@
         function renderStatus(data) {
           if (!data) return;
           setText("checked_at", new Date().toLocaleString());
+          const title = document.getElementById("server-title");
+          if (title) title.textContent = data.config.server_name || "Windrose Server";
           setText("online_count", data.game.online_count);
           setText("max_players", data.config.max_players);
           setText("last_server_state", data.game.last_server_state);
           setText("container", data.status.container);
           setText("health", data.status.health);
+          setText("invite_code", data.config.invite_code || "");
+          setText("password_protected", `Password: ${data.config.password_protected ? "on" : "off"}`);
+          setText("last_terrain", data.game.last_terrain || "unknown");
+          setText("world_id", data.config.world_id || "");
           setText("last_session", data.game.last_session || "unknown");
+          setText("game_version", data.version.game_version || "unknown");
+          setText("steam_build", `Steam build ${data.version.steam_build || "unknown"}`);
+          setText("deployment_id", data.version.deployment_id || "unknown");
+          setText("release_version", `Release ${data.version.release_version || "unknown"}`);
+          setText("backup_latest", data.backups.latest || "none");
+          setText("backup_summary", `${data.backups.latest_size || ""} · ${data.backups.count || 0} kept`);
           setText("last_log_time", data.game.last_log_time || "unknown");
+          setText("started_at", `Started ${data.status.started_at || ""}`);
           renderMonitor(data.monitor);
           renderPlayers(data.game.players || []);
         }
@@ -974,22 +1291,46 @@
           }
           try {
             if (active === "logs") {
-              const response = await fetch("{{ url_for('api_logs') }}");
+              const response = await fetch(instanceUrl("{{ url_for('api_logs') }}"));
               if (response.redirected || response.status === 401) {
                 location.href = "{{ url_for('login') }}";
                 return;
               }
               document.getElementById("logs-text").textContent = await response.text();
             } else {
-              renderStatus(await fetchJson("{{ url_for('api_status') }}"));
+              renderStatus(await fetchJson(instanceUrl("{{ url_for('api_status') }}")));
             }
             document.getElementById("refresh-state").textContent = `updated ${new Date().toLocaleTimeString()}`;
           } catch (error) {
             document.getElementById("refresh-state").textContent = `refresh failed: ${error.message}`;
           }
         }
-        const initial = new URLSearchParams(location.search).get("tab") || location.hash.slice(1) || localStorage.getItem("windrose-panel-tab") || "overview";
+        const params = new URLSearchParams(location.search);
+        const rememberedInstance = localStorage.getItem("windrose-panel-instance");
+        const initialInstance = params.get("instance") || rememberedInstance || "{{ selected_instance_id }}";
+        if (instanceSelect && Array.from(instanceSelect.options).some((option) => option.value === initialInstance)) {
+          instanceSelect.value = initialInstance;
+        }
+        const refreshLink = document.querySelector('.top-actions a.button[href="{{ url_for("index") }}"]');
+        if (refreshLink) {
+          refreshLink.addEventListener("click", (event) => {
+            event.preventDefault();
+            const url = new URL(instanceUrl("{{ url_for('index') }}"));
+            url.searchParams.set("tab", document.querySelector('.tabs button.active')?.dataset.tab || "overview");
+            location.href = url.toString();
+          });
+        }
+        const initial = params.get("tab") || location.hash.slice(1) || localStorage.getItem("windrose-panel-tab") || "overview";
         tabs.forEach((tab) => tab.addEventListener("click", () => showTab(tab.dataset.tab)));
+        instanceSelect?.addEventListener("change", () => {
+          localStorage.setItem("windrose-panel-instance", currentInstanceId());
+          syncUrl();
+          refreshActiveTab();
+        });
+        document.querySelectorAll(".instance-schedule-select").forEach((button) => {
+          button.addEventListener("click", () => selectInstanceSchedulePane(button.dataset.instancePane));
+        });
+        selectInstanceSchedulePane(localStorage.getItem("windrose-instance-schedule-pane") || "");
         showTab(tabs.some((tab) => tab.dataset.tab === initial) ? initial : "overview");
         setInterval(refreshActiveTab, 15000);
         refreshActiveTab();

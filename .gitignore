@@ -7,6 +7,7 @@ server_scripts/.discord_webhook
 
 # Live game/server data
 server-files/
+server-files
 data/
 backups/
 steam-home/
@@ -14,6 +15,8 @@ windrose_plus_data/
 panel/static/windroseplus/
 upstream-docker/
 windrose-server.sh.bak-*
+instances/*/server-files/
+instances/*/.env
 
 # Python/runtime artifacts
 __pycache__/
